@@ -1,4 +1,3 @@
-// src/services/video-processor.service.ts
 import ffmpeg from 'fluent-ffmpeg';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -58,7 +57,9 @@ export class VideoProcessorService {
             '-b:a 128k'
           ])
           .output(outputPath)
-          .on('end', resolve)
+          .on('end', () => {
+            resolve();
+          })
           .on('error', reject)
           .run();
       });
@@ -82,13 +83,16 @@ export class VideoProcessorService {
             folder: path.dirname(outputPath),
             size: '1280x720'
           })
-          .on('end', resolve)
+          .on('end', () => {
+            resolve();
+          })
           .on('error', reject);
       });
     } catch (error: any) {
       throw new VideoProcessingError(`Thumbnail generation failed: ${error.message}`);
     }
   }
+
 
   /**
    * Processes the full video into multiple quality versions
@@ -153,33 +157,32 @@ export class VideoProcessorService {
   /**
    * Transcodes video to specific quality preset
    */
-/**
-   * Transcodes video to specific quality preset
-   */
-private static async transcodeVideo(
-  inputPath: string,
-  outputPath: string,
-  preset: VideoPreset
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    ffmpeg(inputPath)
-      .videoCodec('libx264')
-      .videoBitrate(preset.videoBitrate)
-      .audioCodec('aac')
-      .audioBitrate(preset.audioBitrate)
-      .size(preset.resolution)
-      .outputOptions([
-        '-preset fast',
-        '-movflags +faststart',
-        '-profile:v main',
-        '-pix_fmt yuv420p'
-      ])
-      .output(outputPath)
-      .on('end', resolve)
-      .on('error', reject)
-      .run();
-  });
-}
+  private static async transcodeVideo(
+    inputPath: string,
+    outputPath: string,
+    preset: VideoPreset
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      ffmpeg(inputPath)
+        .videoCodec('libx264')
+        .videoBitrate(preset.videoBitrate)
+        .audioCodec('aac')
+        .audioBitrate(preset.audioBitrate)
+        .size(preset.resolution)
+        .outputOptions([
+          '-preset fast',
+          '-movflags +faststart',
+          '-profile:v main',
+          '-pix_fmt yuv420p'
+        ])
+        .output(outputPath)
+        .on('end', () => {
+          resolve();
+        })
+        .on('error', reject)
+        .run();
+    });
+  }
 
   /**
    * Uploads processed video files to S3

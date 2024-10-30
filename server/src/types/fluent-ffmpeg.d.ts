@@ -82,8 +82,7 @@ declare module 'fluent-ffmpeg' {
     
     // Event handlers
     on(event: 'start', callback: (commandLine: string) => void): FfmpegCommand;
-    on(event: 'end', callback: () => void): FfmpegCommand;
-    on(event: 'error', callback: (err: Error, stdout: string, stderr: string) => void): FfmpegCommand;
+    on(event: 'end', callback: (stdout?: string | null, stderr?: string | null) => void): FfmpegCommand;    on(event: 'error', callback: (err: Error, stdout: string, stderr: string) => void): FfmpegCommand;
     on(event: 'progress', callback: (progress: any) => void): FfmpegCommand;
     
     // Running methods

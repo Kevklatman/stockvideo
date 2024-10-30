@@ -1,7 +1,14 @@
 // src/providers/auth-provider.tsx
-'use client';
+"use client";
 
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { AxiosError } from 'axios';
+import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { authApi } from '@/lib/api-client';
+
+interface ApiError {
+  message: string;
+  errors?: Record<string, string[]>;
+}
 
 interface User {
   id: string;
@@ -23,22 +30,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  useEffect(() => {
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      setIsLoading(false);
+    } else {
+      setIsLoading(false);
+    }
+  }, []);
+
   const login = async (email: string, password: string) => {
     try {
       setIsLoading(true);
-      // TODO: Implement actual login logic
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Login failed');
+      const response = await authApi.login(email, password);
+      if (response && response.token) {
+        localStorage.setItem('auth_token', response.token);
       }
-
-      const data = await response.json();
-      setUser(data.user);
+      if (response) {
+        setUser(response.user);
+      }
     } catch (error) {
       console.error('Login error:', error);
       throw error;
@@ -50,21 +60,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = async (email: string, password: string) => {
     try {
       setIsLoading(true);
-      // TODO: Implement actual registration logic
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Registration failed');
+      const response = await authApi.register(email, password);
+      if (response && response.token) {
+        localStorage.setItem('auth_token', response.token);
       }
-
-      const data = await response.json();
-      setUser(data.user);
+      if (response) {
+        setUser(response.user);
+      }
     } catch (error) {
-      console.error('Registration error:', error);
+      const axiosError = error as AxiosError<ApiError>;
+      console.error('Registration error:', axiosError.response?.data);
       throw error;
     } finally {
       setIsLoading(false);
@@ -72,8 +77,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    localStorage.removeItem('auth_token');
     setUser(null);
-    // TODO: Implement actual logout logic
   };
 
   return (

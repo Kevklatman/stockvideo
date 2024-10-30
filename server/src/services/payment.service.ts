@@ -342,17 +342,23 @@ export class PaymentService {
     const lockKey = `purchase_lock:${userId}:${videoId}`;
     const token = Math.random().toString(36).substring(7);
     
-    const acquired = await redisClient.set(
-      lockKey,
-      token,
-      'NX',
-      'EX',
-      this.PURCHASE_LOCK_TTL
-    );
-
-    return acquired ? token : null;
+    try {
+      // Using SET with NX and EX options as a single command
+      const result = await redisClient.set(
+        lockKey,
+        token,
+        'EX',
+        this.PURCHASE_LOCK_TTL,
+        'NX'
+      );
+      
+      return result === 'OK' ? token : null;
+    } catch (error) {
+      this.logger.error('Failed to acquire purchase lock:', error);
+      return null;
+    }
   }
-
+  
   private static async releasePurchaseLock(
     userId: string,
     videoId: string,
@@ -366,9 +372,14 @@ export class PaymentService {
         return 0
       end
     `;
-
-    await redisClient.eval(script, 1, lockKey, token);
+  
+    try {
+      await redisClient.eval(script, 1, lockKey, token);
+    } catch (error) {
+      this.logger.error('Failed to release purchase lock:', error);
+    }
   }
+  
 
   private static async cachePaymentIntent(
     paymentIntentId: string,
