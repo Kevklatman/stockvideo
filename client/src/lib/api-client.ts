@@ -30,6 +30,45 @@ const api = axios.create({
   },
 });
 
+// Add request interceptor for debugging
+api.interceptors.request.use(
+  (config) => {
+    console.log('API Request:', {
+      url: config.url,
+      method: config.method,
+      headers: {
+        ...config.headers,
+        Authorization: config.headers.Authorization ? 'Bearer ...' : 'none'
+      }
+    });
+    return config;
+  },
+  (error) => {
+    console.error('API Request Error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor for debugging
+api.interceptors.response.use(
+  (response) => {
+    console.log('API Response:', {
+      url: response.config.url,
+      status: response.status,
+      data: response.data
+    });
+    return response;
+  },
+  (error) => {
+    console.error('API Response Error:', {
+      url: error.config?.url,
+      status: error.response?.status,
+      data: error.response?.data
+    });
+    return Promise.reject(error);
+  }
+);
+
 export class ValidationException extends Error {
   code: string;
   errors: ValidationError[];
@@ -59,37 +98,46 @@ const handleApiError = (error: unknown) => {
 export const authApi = {
   register: debounce(async (email: string, password: string): Promise<AuthResponse> => {
     try {
-      const response = await api.post<AuthResponse>('/auth/register', {
+      const response = await api.post<{ status: string; data: AuthResponse }>('/auth/register', {
         email,
         password,
       });
       
-      if (response.data.token) {
-        api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
+      if (response.data.data.token) {
+        api.defaults.headers.common['Authorization'] = `Bearer ${response.data.data.token}`;
       }
       
-      return response.data;
+      return response.data.data;
     } catch (error) {
-      return handleApiError(error);
+      throw handleApiError(error);
     }
   }, 300),
 
   login: debounce(async (email: string, password: string): Promise<AuthResponse> => {
     try {
-      const response = await api.post<AuthResponse>('/auth/login', {
+      const response = await api.post<{ status: string; data: AuthResponse }>('/auth/login', {
         email,
         password,
       });
       
-      if (response.data.token) {
-        api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
+      if (response.data.data.token) {
+        api.defaults.headers.common['Authorization'] = `Bearer ${response.data.data.token}`;
       }
       
-      return response.data;
+      return response.data.data;
     } catch (error) {
-      return handleApiError(error);
+      throw handleApiError(error);
     }
   }, 300),
+
+  validateToken: async (): Promise<AuthResponse['user']> => {
+    try {
+      const response = await api.get<{ status: string; data: { user: AuthResponse['user'] } }>('/auth/validate');
+      return response.data.data.user;
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  },
 
   setAuthToken: (token: string | null) => {
     if (token) {
@@ -100,4 +148,5 @@ export const authApi = {
   }
 };
 
+// Add axios instance export for other API calls
 export default api;

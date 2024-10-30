@@ -1,10 +1,12 @@
 // src/components/features/layout/root-layout.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
 import { useAuth } from '@/providers/auth-provider';
+import { Toast } from '@/components/Toast';
 
 const navigationItems = [
   { label: 'Home', href: '/' },
@@ -23,15 +25,54 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { user, logout } = useAuth();
+  const [showLogoutSuccess, setShowLogoutSuccess] = useState(false);
+  const router = useRouter();
+  
+  // Destructure auth context
+  const { user, logout, isLoading } = useAuth();
 
-  const allNavigationItems = [
-    ...navigationItems,
-    ...(user ? authNavigationItems : []),
-  ];
+  // Debug useEffect to track auth state changes
+  useEffect(() => {
+    console.log('RootLayout auth state:', {
+      isAuthenticated: !!user,
+      user,
+      isLoading
+    });
+  }, [user, isLoading]);
+
+  const handleLogout = () => {
+    logout();
+    setShowLogoutSuccess(true);
+    setIsMobileMenuOpen(false);
+    setTimeout(() => {
+      router.push('/');
+      setShowLogoutSuccess(false);
+    }, 1500);
+  };
+
+  // Compute navigation items based on auth state
+  const allNavigationItems = user 
+    ? [...navigationItems, ...authNavigationItems]
+    : navigationItems;
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="text-gray-600">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white">
+      {showLogoutSuccess && (
+        <Toast 
+          message="Successfully logged out!" 
+          type="success"
+          onClose={() => setShowLogoutSuccess(false)}
+        />
+      )}
+
       <header className="border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex justify-between items-center h-16">
@@ -47,6 +88,7 @@ export default function RootLayout({
               </Link>
             </div>
 
+            {/* Desktop Navigation */}
             <nav className="hidden md:flex items-center gap-4">
               {allNavigationItems.map((item) => (
                 <Link
@@ -57,27 +99,34 @@ export default function RootLayout({
                   {item.label}
                 </Link>
               ))}
-              {user ? (
-                <button
-                  onClick={logout}
-                  className="px-3 py-2 rounded-md text-gray-600 hover:bg-gray-100"
-                >
-                  Logout
-                </button>
-              ) : (
-                <Link
-                  href="/login"
-                  className="px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700"
-                >
-                  Login
-                </Link>
-              )}
+              
+              {/* Auth Section */}
+              <div className="pl-4 border-l border-gray-200">
+                {user ? (
+                  <div className="flex items-center gap-4">
+                    <span className="text-sm text-gray-600">{user.email}</span>
+                    <button
+                      onClick={handleLogout}
+                      className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+                    >
+                      Logout
+                    </button>
+                  </div>
+                ) : (
+                  <Link
+                    href="/login"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                  >
+                    Login
+                  </Link>
+                )}
+              </div>
             </nav>
           </div>
         </div>
       </header>
 
-      {/* Mobile menu */}
+      {/* Mobile Menu */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div 
@@ -105,20 +154,24 @@ export default function RootLayout({
                   {item.label}
                 </Link>
               ))}
+              
+              {/* Mobile Auth Section */}
               {user ? (
-                <button
-                  onClick={() => {
-                    logout();
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className="w-full text-left px-3 py-2 rounded-md text-gray-600 hover:bg-gray-100"
-                >
-                  Logout
-                </button>
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="px-3 py-2 text-sm text-gray-600">
+                    {user.email}
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full mt-2 px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+                  >
+                    Logout
+                  </button>
+                </div>
               ) : (
                 <Link
                   href="/login"
-                  className="block px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700"
+                  className="block mt-4 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   Login

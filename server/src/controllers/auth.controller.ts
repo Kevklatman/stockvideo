@@ -3,9 +3,6 @@ import { Request, Response, NextFunction } from "express";
 import { AuthService, AuthError } from "../services/auth.service";
 
 export class AuthController {
-  /**
-   * Handle user registration
-   */
   static register = async (
     req: Request,
     res: Response,
@@ -27,7 +24,14 @@ export class AuthController {
       
       res.status(201).json({
         status: 'success',
-        data: result
+        data: {
+          token: result.token,
+          user: {
+            id: result.user.id,
+            email: result.user.email,
+            role: result.user.role
+          }
+        }
       });
     } catch (error) {
       if (error instanceof AuthError) {
@@ -39,14 +43,10 @@ export class AuthController {
         });
         return;
       }
-
       next(error);
     }
   };
 
-  /**
-   * Handle user login
-   */
   static login = async (
     req: Request,
     res: Response,
@@ -68,7 +68,14 @@ export class AuthController {
       
       res.json({
         status: 'success',
-        data: result
+        data: {
+          token: result.token,
+          user: {
+            id: result.user.id,
+            email: result.user.email,
+            role: result.user.role
+          }
+        }
       });
     } catch (error) {
       if (error instanceof AuthError) {
@@ -80,7 +87,36 @@ export class AuthController {
         });
         return;
       }
+      next(error);
+    }
+  };
 
+  static validateToken = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      if (!req.user) {
+        res.status(401).json({
+          status: 'error',
+          code: 'UNAUTHORIZED',
+          message: 'Invalid token'
+        });
+        return;
+      }
+
+      res.json({
+        status: 'success',
+        data: {
+          user: {
+            id: req.user.id,
+            email: req.user.email,
+            role: req.user.role
+          }
+        }
+      });
+    } catch (error) {
       next(error);
     }
   };
