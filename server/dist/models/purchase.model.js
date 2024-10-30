@@ -10,7 +10,6 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Purchase = void 0;
-// src/models/purchase.model.ts
 const typeorm_1 = require("typeorm");
 const user_model_1 = require("./user.model");
 const video_model_1 = require("./video.model");

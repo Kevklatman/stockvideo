@@ -4,12 +4,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.VideoProcessorService = void 0;
-// src/services/video-processor.service.ts
 const fluent_ffmpeg_1 = __importDefault(require("fluent-ffmpeg"));
 const fs_1 = require("fs");
 const path_1 = __importDefault(require("path"));
 const aws_sdk_1 = require("aws-sdk");
 const crypto_1 = require("crypto");
+const types_1 = require("../types");
 class VideoProcessorService {
     /**
      * Generates a 30-second preview of the video
@@ -19,7 +19,7 @@ class VideoProcessorService {
             await fs_1.promises.access(inputPath);
             return new Promise((resolve, reject) => {
                 (0, fluent_ffmpeg_1.default)(inputPath)
-                    .setDuration(30)
+                    .duration(30)
                     .audioCodec('aac')
                     .videoCodec('libx264')
                     .outputOptions([
@@ -31,13 +31,15 @@ class VideoProcessorService {
                     '-b:a 128k'
                 ])
                     .output(outputPath)
-                    .on('end', resolve)
+                    .on('end', () => {
+                    resolve();
+                })
                     .on('error', reject)
                     .run();
             });
         }
         catch (error) {
-            throw new Error(`Preview generation failed: ${error.message}`);
+            throw new types_1.VideoProcessingError(`Preview generation failed: ${error.message}`);
         }
     }
     /**
@@ -49,17 +51,19 @@ class VideoProcessorService {
             return new Promise((resolve, reject) => {
                 (0, fluent_ffmpeg_1.default)(inputPath)
                     .screenshots({
-                    timestamps: ['00:00:01'], // Take screenshot at 1 second
+                    timestamps: ['00:00:01'],
                     filename: path_1.default.basename(outputPath),
                     folder: path_1.default.dirname(outputPath),
                     size: '1280x720'
                 })
-                    .on('end', resolve)
+                    .on('end', () => {
+                    resolve();
+                })
                     .on('error', reject);
             });
         }
         catch (error) {
-            throw new Error(`Thumbnail generation failed: ${error.message}`);
+            throw new types_1.VideoProcessingError(`Thumbnail generation failed: ${error.message}`);
         }
     }
     /**
@@ -92,35 +96,7 @@ class VideoProcessorService {
             };
         }
         catch (error) {
-            throw new Error(`Video processing failed: ${error.message}`);
-        }
-    }
-    /**
-     * Generates HLS streams for adaptive streaming
-     */
-    static async generateHLSStream(inputPath, outputDir) {
-        try {
-            await fs_1.promises.access(inputPath);
-            await fs_1.promises.mkdir(outputDir, { recursive: true });
-            return new Promise((resolve, reject) => {
-                (0, fluent_ffmpeg_1.default)(inputPath)
-                    .outputOptions([
-                    '-profile:v main',
-                    '-sc_threshold 0',
-                    '-g 48',
-                    '-keyint_min 48',
-                    '-hls_time 4',
-                    '-hls_playlist_type vod',
-                    '-hls_segment_filename', path_1.default.join(outputDir, 'segment_%03d.ts')
-                ])
-                    .output(path_1.default.join(outputDir, 'playlist.m3u8'))
-                    .on('end', resolve)
-                    .on('error', reject)
-                    .run();
-            });
-        }
-        catch (error) {
-            throw new Error(`HLS generation failed: ${error.message}`);
+            throw new types_1.VideoProcessingError(`Video processing failed: ${error.message}`);
         }
     }
     /**
@@ -150,9 +126,11 @@ class VideoProcessorService {
     static async transcodeVideo(inputPath, outputPath, preset) {
         return new Promise((resolve, reject) => {
             (0, fluent_ffmpeg_1.default)(inputPath)
-                .size(preset.resolution)
+                .videoCodec('libx264')
                 .videoBitrate(preset.videoBitrate)
+                .audioCodec('aac')
                 .audioBitrate(preset.audioBitrate)
+                .size(preset.resolution)
                 .outputOptions([
                 '-preset fast',
                 '-movflags +faststart',
@@ -160,7 +138,9 @@ class VideoProcessorService {
                 '-pix_fmt yuv420p'
             ])
                 .output(outputPath)
-                .on('end', resolve)
+                .on('end', () => {
+                resolve();
+            })
                 .on('error', reject)
                 .run();
         });
@@ -169,22 +149,27 @@ class VideoProcessorService {
      * Uploads processed video files to S3
      */
     static async uploadToS3(processedVideo, videoId) {
-        const uploads = [];
-        const results = {
-            previewUrl: '',
-            thumbnailUrl: '',
-            qualityUrls: {}
-        };
-        // Upload preview
-        uploads.push(this.uploadFileToS3(processedVideo.preview, `previews/${videoId}/preview.mp4`).then(url => results.previewUrl = url));
-        // Upload thumbnail
-        uploads.push(this.uploadFileToS3(processedVideo.thumbnail, `thumbnails/${videoId}/thumbnail.jpg`).then(url => results.thumbnailUrl = url));
-        // Upload each quality version
-        for (const [quality, filePath] of Object.entries(processedVideo.qualities)) {
-            uploads.push(this.uploadFileToS3(filePath, `videos/${videoId}/${quality}.mp4`).then(url => results.qualityUrls[quality] = url));
+        try {
+            const uploads = [];
+            const results = {
+                previewUrl: '',
+                thumbnailUrl: '',
+                qualityUrls: {}
+            };
+            // Upload preview
+            uploads.push(this.uploadFileToS3(processedVideo.preview, `previews/${videoId}/preview.mp4`).then(url => results.previewUrl = url));
+            // Upload thumbnail
+            uploads.push(this.uploadFileToS3(processedVideo.thumbnail, `thumbnails/${videoId}/thumbnail.jpg`).then(url => results.thumbnailUrl = url));
+            // Upload each quality version
+            for (const [quality, filePath] of Object.entries(processedVideo.qualities)) {
+                uploads.push(this.uploadFileToS3(filePath, `videos/${videoId}/${quality}.mp4`).then(url => results.qualityUrls[quality] = url));
+            }
+            await Promise.all(uploads);
+            return results;
         }
-        await Promise.all(uploads);
-        return results;
+        catch (error) {
+            throw new types_1.StorageError(`Failed to upload files to storage: ${error.message}`);
+        }
     }
     /**
      * Uploads a single file to S3
@@ -198,6 +183,96 @@ class VideoProcessorService {
             ContentType: path_1.default.extname(filePath) === '.jpg' ? 'image/jpeg' : 'video/mp4'
         }).promise();
         return key;
+    }
+    /**
+     * Deletes all video-related files from S3
+     */
+    static async deleteFromS3(videoId) {
+        try {
+            // Get list of all objects with the video ID prefix
+            const objects = await this.s3.listObjectsV2({
+                Bucket: process.env.AWS_BUCKET_NAME,
+                Prefix: `videos/${videoId}`
+            }).promise();
+            // Also get preview and thumbnail objects
+            const additionalObjects = await Promise.all([
+                this.s3.listObjectsV2({
+                    Bucket: process.env.AWS_BUCKET_NAME,
+                    Prefix: `previews/${videoId}`
+                }).promise(),
+                this.s3.listObjectsV2({
+                    Bucket: process.env.AWS_BUCKET_NAME,
+                    Prefix: `thumbnails/${videoId}`
+                }).promise()
+            ]);
+            // Combine all objects
+            const allObjects = [
+                ...(objects.Contents || []),
+                ...(additionalObjects[0].Contents || []),
+                ...(additionalObjects[1].Contents || [])
+            ];
+            if (allObjects.length === 0) {
+                return;
+            }
+            // Delete all objects
+            await this.s3.deleteObjects({
+                Bucket: process.env.AWS_BUCKET_NAME,
+                Delete: {
+                    Objects: allObjects.map(obj => ({ Key: obj.Key })),
+                    Quiet: true
+                }
+            }).promise();
+        }
+        catch (error) {
+            throw new types_1.StorageError(`Failed to delete video files from storage: ${error.message}`);
+        }
+    }
+    /**
+     * Deletes a single file from S3
+     */
+    static async deleteFileFromS3(key) {
+        try {
+            await this.s3.deleteObject({
+                Bucket: process.env.AWS_BUCKET_NAME,
+                Key: key
+            }).promise();
+        }
+        catch (error) {
+            throw new types_1.StorageError(`Failed to delete file from storage: ${error.message}`);
+        }
+    }
+    /**
+     * Clean up all video files for a given ID
+     */
+    static async cleanupAllFiles(videoId) {
+        try {
+            // Delete from S3
+            await this.deleteFromS3(videoId);
+            // Clean up local temp files if they exist
+            const tempDir = path_1.default.join(__dirname, '../../uploads/temp', videoId);
+            await fs_1.promises.rm(tempDir, { recursive: true, force: true });
+        }
+        catch (error) {
+            throw new types_1.StorageError(`Failed to clean up video files: ${error.message}`);
+        }
+    }
+    /**
+     * Helper method to check if object exists in S3
+     */
+    static async objectExists(key) {
+        try {
+            await this.s3.headObject({
+                Bucket: process.env.AWS_BUCKET_NAME,
+                Key: key
+            }).promise();
+            return true;
+        }
+        catch (error) {
+            if (error.code === 'NotFound') {
+                return false;
+            }
+            throw error;
+        }
     }
 }
 exports.VideoProcessorService = VideoProcessorService;

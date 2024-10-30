@@ -13,7 +13,92 @@ const aws_sdk_1 = require("aws-sdk");
 const crypto_1 = require("crypto");
 const redis_1 = __importDefault(require("../config/redis"));
 const types_1 = require("../types");
+const https_1 = __importDefault(require("https"));
 class VideoAccessService {
+    /**
+   * Handles partial content requests for video streaming
+   */
+    static async handlePartialContent(streamUrl, rangeHeader) {
+        try {
+            // Parse the range header
+            const range = this.parseRangeHeader(rangeHeader);
+            if (!range) {
+                throw new types_1.VideoAccessError('Invalid range header');
+            }
+            // Get the video size
+            const videoSize = await this.getVideoSize(streamUrl);
+            // Calculate the chunk size
+            const start = range.start;
+            const end = range.end || Math.min(start + 1000000, videoSize - 1); // 1MB chunks
+            const contentLength = end - start + 1;
+            // Create read stream with range
+            const stream = await this.createRangeStream(streamUrl, start, end);
+            return {
+                headers: {
+                    'Content-Range': `bytes ${start}-${end}/${videoSize}`,
+                    'Accept-Ranges': 'bytes',
+                    'Content-Length': contentLength,
+                    'Content-Type': 'video/mp4'
+                },
+                stream
+            };
+        }
+        catch (error) {
+            throw new types_1.VideoAccessError(`Failed to handle partial content: ${error.message}`);
+        }
+    }
+    /**
+     * Parse range header
+     */
+    static parseRangeHeader(rangeHeader) {
+        const matches = rangeHeader.match(/bytes=(\d+)-(\d+)?/);
+        if (!matches) {
+            return null;
+        }
+        return {
+            start: parseInt(matches[1], 10),
+            end: matches[2] ? parseInt(matches[2], 10) : undefined
+        };
+    }
+    /**
+     * Get video file size
+     */
+    static async getVideoSize(url) {
+        return new Promise((resolve, reject) => {
+            https_1.default.get(url, (response) => {
+                const contentLength = response.headers['content-length'];
+                if (contentLength) {
+                    resolve(parseInt(contentLength, 10));
+                }
+                else {
+                    reject(new Error('Content-Length header not found'));
+                }
+                response.destroy(); // Clean up the connection
+            }).on('error', reject);
+        });
+    }
+    /**
+     * Create a readable stream for the specified range
+     */
+    static async createRangeStream(url, start, end) {
+        const response = await new Promise((resolve, reject) => {
+            const options = {
+                headers: {
+                    Range: `bytes=${start}-${end}`
+                }
+            };
+            https_1.default.get(url, options, (response) => {
+                if (response.statusCode === 206) {
+                    resolve(response);
+                }
+                else {
+                    response.destroy();
+                    reject(new Error('Failed to create range stream'));
+                }
+            }).on('error', reject);
+        });
+        return response;
+    }
     /**
      * Generates a signed URL for accessing preview content
      */
@@ -44,7 +129,10 @@ class VideoAccessService {
             if (error instanceof types_1.VideoAccessError) {
                 throw error;
             }
-            throw new types_1.VideoAccessError(`Failed to generate preview URL: ${error.message}`);
+            if (error instanceof Error) {
+                throw new types_1.VideoAccessError(`Failed to generate preview URL: ${error.message}`);
+            }
+            throw new types_1.VideoAccessError('Failed to generate preview URL due to an unknown error');
         }
     }
     /**
@@ -84,7 +172,10 @@ class VideoAccessService {
             if (error instanceof types_1.VideoAccessError) {
                 throw error;
             }
-            throw new types_1.VideoAccessError(`Failed to generate streaming token: ${error.message}`);
+            if (error instanceof Error) {
+                throw new types_1.VideoAccessError(`Failed to generate streaming token: ${error.message}`);
+            }
+            throw new types_1.VideoAccessError('Failed to generate streaming token due to an unknown error');
         }
     }
     /**
@@ -118,7 +209,10 @@ class VideoAccessService {
             if (error instanceof types_1.VideoAccessError) {
                 throw error;
             }
-            throw new types_1.VideoAccessError(`Failed to generate download token: ${error.message}`);
+            if (error instanceof Error) {
+                throw new types_1.VideoAccessError(`Failed to generate download token: ${error.message}`);
+            }
+            throw new types_1.VideoAccessError('Failed to generate download token due to an unknown error');
         }
     }
     /**

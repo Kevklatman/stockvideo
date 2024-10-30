@@ -6,18 +6,25 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.authMiddleware = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const authMiddleware = (req, res, next) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith("Bearer ")) {
-        return res.status(401).json({ message: "Unauthorized" });
-    }
-    const token = authHeader.split(" ")[1];
     try {
-        const decoded = jsonwebtoken_1.default.verify(token, process.env.JWT_SECRET || "");
-        req.user = decoded;
-        next();
+        const authHeader = req.headers.authorization;
+        if (!authHeader?.startsWith("Bearer ")) {
+            res.status(401).json({ message: "Unauthorized" });
+            return;
+        }
+        const token = authHeader.split(" ")[1];
+        try {
+            const decoded = jsonwebtoken_1.default.verify(token, process.env.JWT_SECRET || "");
+            req.user = decoded;
+            next();
+        }
+        catch (error) {
+            res.status(401).json({ message: "Invalid token" });
+            return;
+        }
     }
     catch (error) {
-        return res.status(401).json({ message: "Invalid token" });
+        next(error);
     }
 };
 exports.authMiddleware = authMiddleware;
