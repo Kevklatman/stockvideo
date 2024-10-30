@@ -22,8 +22,12 @@ export default function LoginPage() {
     try {
       await login(email, password);
       router.push('/');
-    } catch (_err) { // Added underscore to indicate intentionally unused variable
-      setError('Invalid email or password');
+    } catch (error) {
+      if (error instanceof Error) {
+        setError(error.message);
+      } else {
+        setError('Invalid email or password');
+      }
     } finally {
       setIsLoading(false);
     }
