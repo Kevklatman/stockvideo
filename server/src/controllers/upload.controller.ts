@@ -1,60 +1,60 @@
 // src/controllers/upload.controller.ts
 import { Request, Response } from 'express';
-import { s3Service } from '../services/s3.service';
-import { v4 as uuidv4 } from 'uuid';
+import { S3Client } from '@aws-sdk/client-s3';
+import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
+import crypto from 'crypto';
+
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION!,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+  },
+});
+
+const BUCKET_NAME = process.env.AWS_BUCKET_NAME!;
 
 export class UploadController {
   static async getUploadUrl(req: Request, res: Response) {
     try {
       const { contentType } = req.body;
-      const videoId = uuidv4();
 
-      // Validate content type
-      const allowedTypes = ['video/mp4', 'video/quicktime', 'video/x-msvideo'];
-      if (!allowedTypes.includes(contentType)) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Invalid content type'
-        });
+      if (!contentType) {
+        return res.status(400).json({ error: 'Content type is required' });
       }
 
-      // Get presigned URL
-      const uploadData = await s3Service.getPresignedUploadUrlForVideo(
-        videoId, 
-        contentType
-      );
+      const videoId = crypto.randomUUID();
+      const key = `${videoId}${getFileExtension(contentType)}`;
+
+      const { url, fields } = await createPresignedPost(s3Client, {
+        Bucket: BUCKET_NAME,
+        Key: key,
+        Conditions: [
+          ['content-length-range', 0, 100 * 1024 * 1024], // 100MB max
+          ['starts-with', '$Content-Type', contentType],
+        ],
+        Expires: 3600, // 1 hour
+      });
 
       res.json({
-        status: 'success',
-        data: {
-          ...uploadData,
-          videoId
-        }
+        url,
+        fields,
+        videoId,
+        key
       });
+
     } catch (error) {
-      console.error('Upload URL generation error:', error);
-      res.status(500).json({
-        status: 'error',
-        message: 'Failed to generate upload URL'
-      });
+      console.error('Upload error:', error);
+      res.status(500).json({ error: 'Failed to generate upload URL' });
     }
   }
+}
 
-  static async getStreamingUrl(req: Request, res: Response) {
-    try {
-      const { videoId } = req.params;
-      const url = await s3Service.getVideoStreamingUrl(videoId);
-
-      res.json({
-        status: 'success',
-        data: { url }
-      });
-    } catch (error) {
-      console.error('Streaming URL generation error:', error);
-      res.status(500).json({
-        status: 'error',
-        message: 'Failed to generate streaming URL'
-      });
-    }
-  }
+function getFileExtension(contentType: string): string {
+  const extensions: { [key: string]: string } = {
+    'video/mp4': '.mp4',
+    'video/quicktime': '.mov',
+    'video/x-msvideo': '.avi'
+  };
+  return extensions[contentType] || '.mp4';
 }

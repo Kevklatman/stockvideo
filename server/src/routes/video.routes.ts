@@ -88,7 +88,10 @@ router.get(
   VideoController.searchVideos
 );
 
-router.post('/upload-url', UploadController.getUploadUrl);
-
+// In your video.routes.ts
+router.post('/upload-url',
+  authMiddleware,
+  VideoController.getUploadUrl
+);
 
 export { router as videoRouter };

@@ -5,6 +5,7 @@ interface PresignedUrlData {
   url: string;
   fields: Record<string, string>;
   videoId: string;
+  key: string;
 }
 
 interface VideoUploadState {
@@ -20,6 +21,8 @@ const MAX_FILE_SIZE = 1024 * 1024 * 500; // 500MB
 
 export default function VideoUpload() {
   const [file, setFile] = useState<File | null>(null);
+  const [title] = useState('');
+  const [description] = useState('');
   const [uploadState, setUploadState] = useState<VideoUploadState>({
     status: 'idle',
     progress: 0,
@@ -59,14 +62,14 @@ export default function VideoUpload() {
     if (!file) return;
 
     try {
-      setUploadState({ status: 'preparing', progress: 0, error: null });
+      setUploadState(prev => ({ ...prev, status: 'preparing', progress: 0 }));
 
-      // Get presigned URL
-      const uploadData = await api.post<PresignedUrlData>('/videos/upload-url', {
+      // Get upload URL
+      const uploadData = await api.post<PresignedUrlData>('/api/videos/upload-url', {
         contentType: file.type,
       });
 
-      // Prepare form data for S3
+      // Upload to S3
       const formData = new FormData();
       Object.entries(uploadData.fields).forEach(([key, value]) => {
         formData.append(key, value);
@@ -82,6 +85,15 @@ export default function VideoUpload() {
           const progress = Math.round((event.loaded * 100) / event.total);
           setUploadState(prev => ({ ...prev, progress }));
         },
+      });
+
+      // Create video record
+      setUploadState(prev => ({ ...prev, status: 'processing' }));
+      await api.post('/api/videos', {
+        videoId: uploadData.videoId,
+        key: uploadData.key,
+        title,
+        description
       });
 
       setUploadState({
