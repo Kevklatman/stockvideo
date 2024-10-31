@@ -1,6 +1,14 @@
 // app/lib/api.ts
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || 'http://localhost:3000';
+function normalizeUrl(base: string, endpoint: string): string {
+  // Remove trailing slash from base
+  base = base.replace(/\/$/, '');
+  // Ensure endpoint starts with slash
+  endpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  return `${base}${endpoint}`;
+}
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || 'http://localhost:3001';
 
 export interface ApiError {
   status: 'error';
@@ -74,7 +82,7 @@ async function refreshToken(): Promise<string | null> {
     const refreshToken = localStorage.getItem('refresh_token');
     if (!refreshToken) return null;
 
-    const response = await fetch(`${API_URL}/auth/refresh`, {
+    const response = await fetch(normalizeUrl(API_URL, '/auth/refresh'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -173,8 +181,6 @@ export async function fetchApi<T>(
     ...fetchOptions
   } = options;
 
-    // Ensure endpoint starts with a slash and remove any double slashes
-
   let attemptCount = 0;
 
   while (attemptCount <= retries) {
@@ -195,7 +201,10 @@ export async function fetchApi<T>(
         }
       }
 
-      const url = `${API_URL}${endpoint}`;
+      // Use normalized URL
+      const url = normalizeUrl(API_URL, endpoint);
+      console.log('Making request to:', url); // Debug log
+
       const body = options.body instanceof FormData
         ? options.body
         : options.body

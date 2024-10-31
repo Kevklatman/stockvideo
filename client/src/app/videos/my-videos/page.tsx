@@ -16,8 +16,10 @@ interface UserVideo {
   previewUrl: string;
   fullVideoUrl: string;
   createdAt: string;
-  status: 'published' | 'processing';
-  views: number;
+  status?: 'published' | 'processing';
+  views?: number;
+  userId: string;  // Add this if your backend includes it
+  price: number;   // Add this if your backend includes it
 }
 
 interface VideoResponse {
@@ -48,16 +50,14 @@ export default function MyVideosPage() {
         setIsLoading(true);
         setError(null);
         const queryString = `?page=${page}&limit=10&filter=${filter}&sort=${sort}`;
-        // Just use 'videos/user' since '/api' is now in the base URL
         const response = await api.get<VideoResponse>(`/api/videos/user${queryString}`);
+    
+        // Verify what we're getting in the response
+        console.log('Video response:', response);
         
-        // Make sure we're handling the response structure correctly
-        if (response && 'videos' in response) {
-          setVideos(response.videos);
-          setTotalPages(response.pages);
-        } else {
-          throw new Error('Invalid response format');
-        }
+        // Since we're using .data in our API client already, we can directly access videos
+        setVideos(response.videos);
+        setTotalPages(response.pages);
       } catch (error) {
         console.error('Error fetching videos:', error);
         setError('Failed to load videos');
