@@ -17,7 +17,8 @@
     "migration:revert": "npm run typeorm -- migration:revert -d src/config/database.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.500.0",
+    "@aws-sdk/client-s3": "^3.682.0",
+    "@aws-sdk/s3-request-presigner": "^3.682.0",
     "@types/bcryptjs": "^2.4.6",
     "bcryptjs": "^2.4.3",
     "class-transformer": "^0.5.1",
@@ -40,6 +41,7 @@
     "typedi": "^0.10.0",
     "typeorm": "^0.3.19",
     "typescript": "^5.3.3",
+    "uuid": "^11.0.2",
     "winston": "^3.15.0",
     "winston-daily-rotate-file": "^5.0.0"
   },
