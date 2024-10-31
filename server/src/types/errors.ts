@@ -40,3 +40,10 @@ export class VideoProcessingError extends Error {
       this.name = 'StorageError';
     }
   }
+
+  export class VideoNotFoundError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'VideoNotFoundError'
+    }
+  }
