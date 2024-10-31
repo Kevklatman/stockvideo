@@ -1,229 +1,120 @@
-// src/components/features/videos/video-upload.tsx
-import { useAuth } from '@/providers/auth-provider';
 import { useState } from 'react';
+import { useAuth } from '@/providers/auth-provider';
 
-interface UploadResponse {
-  status: string;
-  data: {
-    url: string;
-    videoId: string;
-    key: string;
-  }
-}
-
-interface VideoUploadState {
-  status: 'idle' | 'preparing' | 'uploading' | 'processing' | 'completed' | 'error';
-  progress: number;
-  error: string | null;
-}
-
-const CHUNK_SIZE = 1 * 1024 * 1024;
-const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/x-msvideo'];
-const MAX_FILE_SIZE = 100 * 1024 * 1024;
 
 export default function VideoUpload() {
-  const { user, isLoading } = useAuth();
+  const { user } = useAuth();
   const [file, setFile] = useState<File | null>(null);
-  const [uploadState, setUploadState] = useState<VideoUploadState>({
-    status: 'idle',
-    progress: 0,
-    error: null,
-  });
+  const [uploadUrl, setUploadUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
-    
-    if (!selectedFile) {
-      setUploadState(prev => ({ ...prev, error: 'No file selected' }));
-      return;
+    if (selectedFile) {
+      if (selectedFile.size > 100 * 1024 * 1024) { // 100MB limit
+        setError('File size must be less than 100MB');
+        return;
+      }
+      setFile(selectedFile);
+      setError(null);
     }
-
-    if (!ALLOWED_VIDEO_TYPES.includes(selectedFile.type)) {
-      setUploadState(prev => ({
-        ...prev,
-        error: 'Invalid file type. Please upload MP4, MOV, or AVI files only.'
-      }));
-      return;
-    }
-
-    if (selectedFile.size > MAX_FILE_SIZE) {
-      setUploadState(prev => ({
-        ...prev,
-        error: 'File size exceeds 100MB limit'
-      }));
-      return;
-    }
-
-    setFile(selectedFile);
-    setUploadState({ status: 'idle', progress: 0, error: null });
   };
 
-  const uploadChunk = async (
-    chunk: Blob,
-    chunkIndex: number,
-    totalChunks: number,
-    uploadUrl: string
-  ) => {
-    const formData = new FormData();
-    formData.append('chunk', chunk);
-    formData.append('chunkIndex', chunkIndex.toString());
-    formData.append('totalChunks', totalChunks.toString());
-
-    const token = localStorage.getItem('auth_token');
-    const response = await fetch(uploadUrl, {
-      method: 'POST',
-      body: formData,
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to upload chunk ${chunkIndex + 1}`);
-    }
-
-    return response;
-  };
-
-  const handleUpload = async () => {
-    if (!file || !user) {
-      setUploadState(prev => ({
-        ...prev,
-        error: !user ? 'Please sign in to upload videos' : 'No file selected'
-      }));
+  const getUploadUrl = async (contentType: string) => {
+    if (!user) {
+      setError('Not authenticated');
       return;
     }
+
+    setIsLoading(true);
+    setError(null);
 
     try {
-      setUploadState(prev => ({ ...prev, status: 'preparing', progress: 0 }));
-
       const token = localStorage.getItem('auth_token');
       const response = await fetch('/api/videos/upload-url', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          fileName: file.name,
-          fileType: file.type,
-          fileSize: file.size
+          filename: file?.name,
+          contentType: contentType,
+          fileSize: file?.size
         })
       });
+
+      const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(`Failed to get upload URL: ${response.statusText}`);
+        throw new Error(data.message || `Failed to get upload URL: ${response.statusText}`);
       }
 
-      const uploadUrlResponse: UploadResponse = await response.json();
-
-      if (uploadUrlResponse.status !== 'success' || !uploadUrlResponse.data) {
-        throw new Error('Invalid upload URL response');
+      if (data.status !== 'success' || !data.data?.url) {
+        throw new Error('Invalid response format from server');
       }
 
-      setUploadState(prev => ({ ...prev, status: 'uploading' }));
-
-      const chunks: Blob[] = [];
-      let offset = 0;
-      while (offset < file.size) {
-        const chunk = file.slice(offset, offset + CHUNK_SIZE);
-        chunks.push(chunk);
-        offset += CHUNK_SIZE;
-      }
-
-      for (let i = 0; i < chunks.length; i++) {
-        await uploadChunk(
-          chunks[i], 
-          i, 
-          chunks.length, 
-          uploadUrlResponse.data.url
-        );
-        const progress = Math.round(((i + 1) / chunks.length) * 100);
-        setUploadState(prev => ({ ...prev, progress }));
-      }
-
-      setUploadState(prev => ({ ...prev, status: 'processing' }));
-      const finalizeResponse = await fetch('/api/videos/finalize', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          videoId: uploadUrlResponse.data.videoId,
-          key: uploadUrlResponse.data.key,
-          metadata: {
-            title: file.name.split('.')[0],
-            contentType: file.type,
-            size: file.size,
-          }
-        })
-      });
-
-      if (!finalizeResponse.ok) {
-        throw new Error('Failed to finalize upload');
-      }
-
-      setUploadState({
-        status: 'completed',
-        progress: 100,
-        error: null,
-      });
+      setUploadUrl(data.data.url);
 
     } catch (error) {
-      console.error('Upload error:', error);
-      setUploadState({
-        status: 'error',
-        progress: 0,
-        error: error instanceof Error ? error.message : 'Failed to upload video',
-      });
+      console.error('Error getting upload URL:', error);
+      setError(error instanceof Error ? error.message : 'Failed to get upload URL');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  if (isLoading) {
-    return <div>Loading...</div>;
+  if (!user) {
+    return <div className="p-4 text-red-500">Please log in to upload videos</div>;
   }
 
   return (
     <div className="p-4">
-      {!user && (
-        <p className="text-red-500 mb-4">Please sign in to upload videos</p>
-      )}
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Select Video File
+        </label>
+        <input
+          type="file"
+          onChange={handleFileChange}
+          accept="video/*"
+          className="block w-full text-sm text-gray-500
+            file:mr-4 file:py-2 file:px-4
+            file:rounded-md file:border-0
+            file:text-sm file:font-semibold
+            file:bg-blue-50 file:text-blue-700
+            hover:file:bg-blue-100"
+        />
+      </div>
       
-      <input
-        type="file"
-        accept={ALLOWED_VIDEO_TYPES.join(',')}
-        onChange={handleFileChange}
-        className="mb-4"
-        disabled={!user}
-      />
-      
-      {file && user && (
+      {file && (
         <button
-          onClick={handleUpload}
-          disabled={uploadState.status === 'uploading' || uploadState.status === 'processing'}
-          className="px-4 py-2 bg-blue-500 text-white rounded disabled:bg-gray-400"
+          onClick={() => getUploadUrl(file.type)}
+          disabled={isLoading}
+          className={`px-4 py-2 rounded text-white ${
+            isLoading 
+              ? 'bg-blue-300 cursor-not-allowed' 
+              : 'bg-blue-500 hover:bg-blue-600'
+          }`}
         >
-          Upload Video
+          {isLoading ? 'Getting URL...' : 'Get Upload URL'}
         </button>
       )}
 
-      {uploadState.status !== 'idle' && (
+      {uploadUrl && (
         <div className="mt-4">
-          <div className="w-full bg-gray-200 rounded">
-            <div
-              className="bg-blue-500 h-2 rounded"
-              style={{ width: `${uploadState.progress}%` }}
-            />
-          </div>
-          <p className="mt-2">
-            Status: {uploadState.status} {uploadState.progress}%
-          </p>
+          <p className="font-medium">Upload URL for {file?.name}:</p>
+          <code className="block mt-2 p-2 bg-gray-100 rounded break-all text-sm">
+            {uploadUrl}
+          </code>
         </div>
       )}
 
-      {uploadState.error && (
-        <p className="mt-4 text-red-500">{uploadState.error}</p>
+      {error && (
+        <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded">
+          <p className="text-red-600">{error}</p>
+        </div>
       )}
     </div>
   );
