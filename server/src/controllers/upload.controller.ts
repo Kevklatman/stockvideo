@@ -1,7 +1,7 @@
 // src/controllers/upload.controller.ts
 import { Request, Response } from 'express';
-import { v4 as uuidv4 } from 'uuid';
 import { s3Service } from '../services/s3.service';
+import { v4 as uuidv4 } from 'uuid';
 
 export class UploadController {
   static async getUploadUrl(req: Request, res: Response) {

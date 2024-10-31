@@ -1,6 +1,6 @@
 // app/lib/api.ts
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || 'http://localhost:3000';
 
 export interface ApiError {
   status: 'error';
@@ -172,6 +172,8 @@ export async function fetchApi<T>(
     onUploadProgress,
     ...fetchOptions
   } = options;
+
+    // Ensure endpoint starts with a slash and remove any double slashes
 
   let attemptCount = 0;
 

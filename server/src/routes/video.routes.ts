@@ -8,6 +8,7 @@ import {
   handleUploadError, 
   validateUploadedFile 
 } from "../middleware/video-upload.middleware";
+import { UploadController } from "../controllers/upload.controller";
 
 const router = Router();
 
@@ -86,5 +87,8 @@ router.get(
   '/search',
   VideoController.searchVideos
 );
+
+router.post('/upload-url', UploadController.getUploadUrl);
+
 
 export { router as videoRouter };
