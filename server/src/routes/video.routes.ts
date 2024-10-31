@@ -93,6 +93,7 @@ router.post('/upload-url',
   authMiddleware,
   VideoController.getUploadUrl
 );
+router.post('/save-video', VideoController.uploadVideo);
 
 router.post('/upload-url', UploadController.getUploadUrl);
 
