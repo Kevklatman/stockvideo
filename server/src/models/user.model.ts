@@ -1,4 +1,13 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, BeforeInsert } from "typeorm";
+// src/models/user.model.ts
+import { 
+  Entity, 
+  PrimaryGeneratedColumn, 
+  Column, 
+  CreateDateColumn, 
+  UpdateDateColumn,
+  Index,
+  BeforeInsert
+} from "typeorm";
 import bcrypt from "bcryptjs";
 
 @Entity("users")
@@ -7,6 +16,7 @@ export class User {
   id!: string;
 
   @Column({ unique: true })
+  @Index()
   email!: string;
 
   @Column()

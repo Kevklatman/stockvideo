@@ -1,7 +1,18 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, UpdateDateColumn } from "typeorm";
+// src/models/video.model.ts
+import { 
+  Entity, 
+  PrimaryGeneratedColumn, 
+  Column, 
+  ManyToOne,
+  JoinColumn,
+  CreateDateColumn, 
+  UpdateDateColumn,
+  Index
+} from "typeorm";
 import { User } from "./user.model";
 
 @Entity("videos")
+@Index(["userId"])
 export class Video {
   @PrimaryGeneratedColumn("uuid")
   id!: string;
@@ -21,7 +32,18 @@ export class Video {
   @Column()
   fullVideoUrl!: string;
 
-  @ManyToOne(() => User, { eager: true })
+  @Column()
+  userId!: string;
+
+  @ManyToOne(() => User, { 
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE" 
+  })
+  @JoinColumn({ 
+    name: "userId",
+    referencedColumnName: "id",
+    foreignKeyConstraintName: "FK_video_user"
+  })
   user!: User;
 
   @CreateDateColumn()

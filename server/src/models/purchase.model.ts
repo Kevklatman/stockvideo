@@ -1,15 +1,21 @@
+// src/models/purchase.model.ts
 import { 
   Entity, 
   PrimaryGeneratedColumn, 
   Column, 
-  ManyToOne, 
+  ManyToOne,
+  JoinColumn,
   CreateDateColumn, 
-  UpdateDateColumn 
+  UpdateDateColumn,
+  Index
 } from "typeorm";
 import { User } from "./user.model";
 import { Video } from "./video.model";
 
 @Entity("purchases")
+@Index(["userId"])
+@Index(["videoId"])
+@Index(["userId", "videoId"])
 export class Purchase {
   @PrimaryGeneratedColumn("uuid")
   id!: string;
@@ -33,10 +39,26 @@ export class Purchase {
   @Column({ nullable: true })
   stripePaymentId!: string;
 
-  @ManyToOne(() => User)
+  @ManyToOne(() => User, {
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE"
+  })
+  @JoinColumn({ 
+    name: "userId",
+    referencedColumnName: "id",
+    foreignKeyConstraintName: "FK_purchase_user"
+  })
   user!: User;
 
-  @ManyToOne(() => Video)
+  @ManyToOne(() => Video, {
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE"
+  })
+  @JoinColumn({ 
+    name: "videoId",
+    referencedColumnName: "id",
+    foreignKeyConstraintName: "FK_purchase_video"
+  })
   video!: Video;
 
   @CreateDateColumn()
