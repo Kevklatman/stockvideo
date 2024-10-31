@@ -14,13 +14,19 @@ interface ApiErrorResponse {
   errors?: ValidationError[];
 }
 
-interface AuthResponse {
+
+export interface AuthResponse {
   token: string;
   user: {
     id: string;
     email: string;
     role: string;
   };
+}
+
+export interface ApiResponse<T> {
+  status: 'success';
+  data: T;
 }
 
 const api = axios.create({
@@ -96,9 +102,9 @@ const handleApiError = (error: unknown) => {
 };
 
 export const authApi = {
-  register: debounce(async (email: string, password: string): Promise<AuthResponse> => {
+  register: debounce(async (email: string, password: string): Promise<ApiResponse<AuthResponse>> => {
     try {
-      const response = await api.post<{ status: string; data: AuthResponse }>('/auth/register', {
+      const response = await api.post<ApiResponse<AuthResponse>>('/auth/register', {
         email,
         password,
       });
@@ -107,33 +113,45 @@ export const authApi = {
         api.defaults.headers.common['Authorization'] = `Bearer ${response.data.data.token}`;
       }
       
-      return response.data.data;
+      return response.data;
     } catch (error) {
       throw handleApiError(error);
     }
   }, 300),
 
-  login: debounce(async (email: string, password: string): Promise<AuthResponse> => {
+  login: async (email: string, password: string): Promise<ApiResponse<AuthResponse>> => {
     try {
-      const response = await api.post<{ status: string; data: AuthResponse }>('/auth/login', {
+      console.log('Sending login request to API');
+      const response = await api.post<ApiResponse<AuthResponse>>('/auth/login', {
         email,
         password,
       });
       
-      if (response.data.data.token) {
-        api.defaults.headers.common['Authorization'] = `Bearer ${response.data.data.token}`;
-      }
+      console.log('Raw API response:', response.data);
       
-      return response.data.data;
+      // Validate response structure
+      if (!response.data?.status || !response.data?.data?.token || !response.data?.data?.user) {
+        console.error('Invalid API response structure:', response.data);
+        throw new Error('Invalid API response format');
+      }
+
+      // Set token for future requests
+      const { token } = response.data.data;
+      if (token) {
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      }
+
+      return response.data;
     } catch (error) {
+      console.error('API login error:', error);
       throw handleApiError(error);
     }
-  }, 300),
+  },
 
-  validateToken: async (): Promise<AuthResponse['user']> => {
+  validateToken: async (): Promise<ApiResponse<{ user: AuthResponse['user'] }>> => {
     try {
-      const response = await api.get<{ status: string; data: { user: AuthResponse['user'] } }>('/auth/validate');
-      return response.data.data.user;
+      const response = await api.get<ApiResponse<{ user: AuthResponse['user'] }>>('/auth/validate');
+      return response.data;
     } catch (error) {
       throw handleApiError(error);
     }
@@ -148,5 +166,4 @@ export const authApi = {
   }
 };
 
-// Add axios instance export for other API calls
 export default api;

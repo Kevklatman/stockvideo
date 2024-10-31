@@ -1,6 +1,6 @@
 // src/middleware/auth.middleware.ts
 import { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
+import { AuthService } from "../services/auth.service";
 
 export interface AuthRequest extends Request {
   user?: {
@@ -10,11 +10,11 @@ export interface AuthRequest extends Request {
   };
 }
 
-export const authMiddleware = (
-  req: AuthRequest, 
-  res: Response, 
+export const authMiddleware = async (
+  req: AuthRequest,
+  res: Response,
   next: NextFunction
-): void => {
+): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
     
@@ -28,35 +28,44 @@ export const authMiddleware = (
     }
 
     const token = authHeader.split(" ")[1];
-    const secret = process.env.JWT_SECRET;
-
-    if (!secret) {
-      res.status(500).json({
-        status: 'error',
-        code: 'SERVER_ERROR',
-        message: "JWT secret not configured"
-      });
-      return;
-    }
 
     try {
-      const decoded = jwt.verify(token, secret) as {
-        id: string;
-        email: string;
-        role: string;
-      };
-
-      req.user = decoded;
+      // Use AuthService to validate token and get user data
+      const userData = await AuthService.validateToken(token);
+      
+      // Set user data in request
+      req.user = userData;
+      
+      // Log successful authentication
+      console.log('User authenticated:', {
+        id: userData.id,
+        email: userData.email,
+        role: userData.role
+      });
+      
       next();
     } catch (error) {
+      console.error('Token validation error:', error);
+      
       res.status(401).json({
         status: 'error',
         code: 'INVALID_TOKEN',
         message: "Invalid or expired token"
       });
-      return;
     }
   } catch (error) {
+    console.error('Auth middleware error:', error);
+    
+    if (error instanceof Error) {
+      res.status(500).json({
+        status: 'error',
+        code: 'AUTH_ERROR',
+        message: error.message
+      });
+      return;
+    }
+    
     next(error);
   }
 };
+
