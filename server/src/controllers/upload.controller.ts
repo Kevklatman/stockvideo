@@ -1,26 +1,24 @@
 // src/controllers/upload.controller.ts
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { Request, Response } from 'express';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import crypto from 'crypto';
-import { Request, Response } from 'express';
+import { S3Client } from '@aws-sdk/client-s3';
+import dotenv from 'dotenv';
 
-// Add debugging
-console.log('Loading upload controller with AWS config:', {
-  region: process.env.AWS_REGION,
-  bucket: process.env.AWS_BUCKET_NAME,
-  hasAccessKey: !!process.env.AWS_ACCESS_KEY_ID,
-  hasSecretKey: !!process.env.AWS_SECRET_ACCESS_KEY
-});
-
-const BUCKET_NAME = process.env.AWS_BUCKET_NAME;
+dotenv.config();
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION,
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-  },
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!
+  }
 });
+
+const BUCKET_NAME = process.env.BUCKET_NAME!;
+const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/x-msvideo'];
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 
 export class UploadController {
   static async getUploadUrl(req: Request, res: Response) {
@@ -28,57 +26,86 @@ export class UploadController {
       const { contentType } = req.body;
 
       if (!contentType) {
-        return res.status(400).json({ error: 'Content type is required' });
+        return res.status(400).json({
+          status: 'error',
+          message: 'Content type is required'
+        });
       }
 
       const videoId = crypto.randomUUID();
-      const key = `videos/${videoId}${getFileExtension(contentType)}`;
 
-      // Create the command
+      // Validate content type
+      if (!ALLOWED_VIDEO_TYPES.includes(contentType)) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Invalid content type'
+        });
+      }
+
+      if (!BUCKET_NAME) {
+        throw new Error('Bucket name is not configured');
+      }
+
+      // Generate presigned URL
       const command = new PutObjectCommand({
-        Bucket: process.env.AWS_BUCKET_NAME,
-        Key: key,
-        ContentType: contentType
+        Bucket: BUCKET_NAME,
+        Key: `videos/${videoId}`,
+        ContentType: contentType,
+        // Add additional metadata
+        // Add additional metadata
+        Metadata: {
+          uploadedAt: new Date().toISOString()
+        }
       });
 
-      console.log('Generating signed URL with params:', {
-        bucket: BUCKET_NAME,
-        key,
-        contentType
+      const url = await getSignedUrl(s3Client, command, { 
+        expiresIn: 3600 // URL expires in 1 hour
       });
 
-      // Generate signed URL
-      const signedUrl = await getSignedUrl(s3Client, command, {
-        expiresIn: 3600
+      res.json({
+        status: 'success',
+        data: {
+          url,
+          videoId,
+          key: `videos/${videoId}`
+        }
       });
-
-      return res.json({
-        videoId,
-        key,
-        uploadUrl: signedUrl,
-        contentType
-      });
-
     } catch (error) {
-      console.error('Upload URL generation error:', {
-        message: error instanceof Error ? error.message : 'Unknown error',
-        bucket: BUCKET_NAME,
-        region: process.env.AWS_REGION
-      });
-
-      return res.status(500).json({
-        error: 'Failed to generate upload URL',
-        details: error instanceof Error ? error.message : 'Unknown error'
+      console.error('Upload URL generation error:', error);
+      res.status(500).json({
+        status: 'error',
+        message: 'Failed to generate upload URL'
       });
     }
   }
-}
 
-function getFileExtension(contentType: string): string {
-  const extensions: { [key: string]: string } = {
-    'video/mp4': '.mp4',
-    'video/quicktime': '.mov',
-    'video/x-msvideo': '.avi'
-  };
-  return extensions[contentType] || '.mp4';
+  static async createVideoRecord(req: Request, res: Response) {
+    try {
+      const { videoId, key } = req.body;
+
+      if (!videoId || !key) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'VideoId and key are required'
+        });
+      }
+
+      // Here you would typically save the video record to your database
+      // This is just a placeholder response
+      res.json({
+        status: 'success',
+        data: {
+          videoId,
+          key,
+          status: 'processing'
+        }
+      });
+    } catch (error) {
+      console.error('Create video record error:', error);
+      res.status(500).json({
+        status: 'error',
+        message: 'Failed to create video record'
+      });
+    }
+  }
 }

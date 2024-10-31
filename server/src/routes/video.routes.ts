@@ -94,4 +94,6 @@ router.post('/upload-url',
   VideoController.getUploadUrl
 );
 
+
+
 export { router as videoRouter };
