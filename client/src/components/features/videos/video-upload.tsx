@@ -1,3 +1,4 @@
+// src/components/features/videos/video-upload.tsx
 import { useAuth } from '@/providers/auth-provider';
 import { useState } from 'react';
 

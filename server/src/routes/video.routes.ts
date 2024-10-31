@@ -94,6 +94,9 @@ router.post('/upload-url',
   VideoController.getUploadUrl
 );
 
+router.post('/upload-url', UploadController.getUploadUrl);
 
+// Finalize upload route
+router.post('/finalize', UploadController.finalizeUpload);
 
 export { router as videoRouter };

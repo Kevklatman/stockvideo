@@ -18,7 +18,6 @@ const s3Client = new S3Client({
 
 const BUCKET_NAME = process.env.BUCKET_NAME!;
 const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/x-msvideo'];
-const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 
 export class UploadController {
   static async getUploadUrl(req: Request, res: Response) {
@@ -105,6 +104,37 @@ export class UploadController {
       res.status(500).json({
         status: 'error',
         message: 'Failed to create video record'
+      });
+    }
+  }
+
+  static async finalizeUpload(req: Request, res: Response) {
+    try {
+      const { videoId, key, metadata } = req.body;
+
+      if (!videoId || !key || !metadata) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'VideoId, key, and metadata are required'
+        });
+      }
+
+      // Here you would typically save the video record to your database
+      // This is just a placeholder response
+      res.json({
+        status: 'success',
+        data: {
+          videoId,
+          key,
+          metadata,
+          status: 'processing'
+        }
+      });
+    } catch (error) {
+      console.error('Finalize upload error:', error);
+      res.status(500).json({
+        status: 'error',
+        message: 'Failed to finalize upload'
       });
     }
   }
