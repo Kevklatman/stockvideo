@@ -1,4 +1,3 @@
-// src/components/features/layout/root-layout.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -27,11 +26,8 @@ export default function RootLayout({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showLogoutSuccess, setShowLogoutSuccess] = useState(false);
   const router = useRouter();
-  
-  // Destructure auth context
   const { user, logout, isLoading } = useAuth();
 
-  // Debug useEffect to track auth state changes
   useEffect(() => {
     console.log('RootLayout auth state:', {
       isAuthenticated: !!user,
@@ -50,10 +46,34 @@ export default function RootLayout({
     }, 1500);
   };
 
-  // Compute navigation items based on auth state
   const allNavigationItems = user 
     ? [...navigationItems, ...authNavigationItems]
     : navigationItems;
+
+  const headerClasses = `
+    border-b border-gray-200 
+    ${user ? 'bg-white shadow-sm' : 'bg-transparent'}
+    transition-colors duration-200
+    sticky top-0 z-50
+  `;
+
+  const logoClasses = `
+    text-xl font-semibold 
+    ${user ? 'text-gray-900' : 'text-gray-800'}
+    transition-colors duration-200
+  `;
+
+  const navLinkClasses = `
+    px-3 py-2 rounded-md
+    ${user ? 'text-gray-600 hover:bg-gray-100' : 'text-gray-700 hover:bg-gray-50'}
+    transition-colors duration-200
+  `;
+
+  const buttonClasses = `
+    px-4 py-2 rounded-md
+    transition-all duration-200
+    disabled:opacity-50 disabled:cursor-not-allowed
+  `;
 
   if (isLoading) {
     return (
@@ -64,7 +84,7 @@ export default function RootLayout({
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className={`min-h-screen ${user ? 'bg-gray-50' : 'bg-white'} transition-colors duration-200`}>
       {showLogoutSuccess && (
         <Toast 
           message="Successfully logged out!" 
@@ -73,17 +93,18 @@ export default function RootLayout({
         />
       )}
 
-      <header className="border-b border-gray-200">
+      <header className={headerClasses}>
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-4">
               <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                 className="p-2 rounded-md hover:bg-gray-100 md:hidden"
+                aria-label="Toggle menu"
               >
                 <Menu className="h-6 w-6" />
               </button>
-              <Link href="/" className="text-xl font-semibold text-gray-900">
+              <Link href="/" className={logoClasses}>
                 Video Platform
               </Link>
             </div>
@@ -94,19 +115,20 @@ export default function RootLayout({
                 <Link
                   key={item.label}
                   href={item.href}
-                  className="px-3 py-2 rounded-md text-gray-600 hover:bg-gray-100"
+                  className={navLinkClasses}
                 >
                   {item.label}
                 </Link>
               ))}
+              
               {user && (
-  <Link
-    href="/videos/upload"
-    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-  >
-    Upload Video
-  </Link>
-)}
+                <Link
+                  href="/videos/upload"
+                  className={`${buttonClasses} bg-blue-600 text-white hover:bg-blue-700`}
+                >
+                  Upload Video
+                </Link>
+              )}
               
               {/* Auth Section */}
               <div className="pl-4 border-l border-gray-200">
@@ -115,7 +137,7 @@ export default function RootLayout({
                     <span className="text-sm text-gray-600">{user.email}</span>
                     <button
                       onClick={handleLogout}
-                      className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+                      className={`${buttonClasses} bg-red-600 text-white hover:bg-red-700`}
                     >
                       Logout
                     </button>
@@ -123,7 +145,7 @@ export default function RootLayout({
                 ) : (
                   <Link
                     href="/login"
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                    className={`${buttonClasses} bg-blue-600 text-white hover:bg-blue-700`}
                   >
                     Login
                   </Link>
@@ -136,42 +158,45 @@ export default function RootLayout({
 
       {/* Mobile Menu */}
       {isMobileMenuOpen && (
-        <div className="fixed inset-0 z-50 md:hidden">
+        <div className="fixed inset-0 z-[60] md:hidden">
           <div 
-            className="fixed inset-0 bg-gray-600 bg-opacity-50" 
+            className="fixed inset-0 bg-gray-600 bg-opacity-50 transition-opacity"
             onClick={() => setIsMobileMenuOpen(false)}
+            aria-hidden="true"
           />
-          <div className="fixed inset-y-0 left-0 w-full max-w-xs bg-white p-6 shadow-lg">
+          <div className="fixed inset-y-0 left-0 w-full max-w-xs bg-white p-6 shadow-lg transform transition-transform">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg font-semibold text-gray-900">Menu</h2>
               <button
                 onClick={() => setIsMobileMenuOpen(false)}
                 className="p-2 rounded-md hover:bg-gray-100"
+                aria-label="Close menu"
               >
                 <X className="h-6 w-6" />
               </button>
             </div>
+            
             <nav className="space-y-2">
               {allNavigationItems.map((item) => (
                 <Link
                   key={item.label}
                   href={item.href}
-                  className="block px-3 py-2 rounded-md text-gray-600 hover:bg-gray-100"
+                  className={navLinkClasses}
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   {item.label}
                 </Link>
               ))}
 
-{user && (
-  <Link
-    href="/videos/upload"
-    className="block px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-    onClick={() => setIsMobileMenuOpen(false)}
-  >
-    Upload Video
-  </Link>
-)}
+              {user && (
+                <Link
+                  href="/videos/upload"
+                  className={`${buttonClasses} block w-full text-center bg-blue-600 text-white hover:bg-blue-700`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Upload Video
+                </Link>
+              )}
               
               {/* Mobile Auth Section */}
               {user ? (
@@ -181,7 +206,7 @@ export default function RootLayout({
                   </div>
                   <button
                     onClick={handleLogout}
-                    className="w-full mt-2 px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+                    className={`${buttonClasses} w-full mt-2 bg-red-600 text-white hover:bg-red-700`}
                   >
                     Logout
                   </button>
@@ -189,7 +214,7 @@ export default function RootLayout({
               ) : (
                 <Link
                   href="/login"
-                  className="block mt-4 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                  className={`${buttonClasses} block w-full text-center mt-4 bg-blue-600 text-white hover:bg-blue-700`}
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   Login

@@ -26,12 +26,26 @@ export function Toast({
   }, [duration, onClose]);
 
   return (
-    <div className={`fixed top-4 right-4 z-50 ${bgColor} border ${borderColor} ${textColor} px-4 py-3 rounded shadow-md flex items-center animate-fade-in`}>
+    <div 
+      className={`
+        fixed top-4 right-4 
+        ${bgColor} 
+        border ${borderColor} 
+        ${textColor} 
+        px-4 py-3 rounded 
+        shadow-md 
+        flex items-center 
+        animate-fade-in
+        z-[100]
+        md:top-20
+      `}
+    >
       <span>{message}</span>
       {onClose && (
         <button
           onClick={onClose}
           className="ml-4 text-xl font-semibold hover:opacity-75"
+          aria-label="Close"
         >
           ×
         </button>
