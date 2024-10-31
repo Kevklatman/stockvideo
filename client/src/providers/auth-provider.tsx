@@ -31,6 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     console.log('Auth state changed:', { user, isLoading, isInitialized });
   }, [user, isLoading, isInitialized]);
 
+  // Initialize authentication
   useEffect(() => {
     const initializeAuth = async () => {
       console.log('Initializing auth state...');
@@ -46,8 +47,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log('Token validation response:', response);
           
           if (response.status === 'success' && response.data.user) {
-            console.log('Setting initial user state:', response.data.user);
-            setUser(response.data.user);
+            await new Promise<void>(resolve => {
+              setUser(response.data.user);
+              setTimeout(resolve, 0);
+            });
           }
         }
       } catch (error) {
@@ -69,50 +72,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     
     try {
-      // Initial API call
       const response = await authApi.login(email, password);
       console.log('Raw login response:', response);
 
-      // Validate response structure
-      if (!response) {
-        console.error('Login response is undefined');
-        throw new Error('Login failed - no response');
-      }
-
-      console.log('Response status:', response.status);
-      console.log('Response data:', response.data);
-
-      if (response && response.status === 'success' && response.data) {
-        // Extract token and user data
-        const { token, user: userData } = response.data;
-        console.log('Extracted token:', token ? 'exists' : 'missing');
-        console.log('Extracted user data:', userData);
-        
-        if (!token) {
-          console.error('No token in successful response');
-          throw new Error('Login failed - no token');
-        }
-
-        if (!userData) {
-          console.error('No user data in successful response');
-          throw new Error('Login failed - no user data');
-        }
-
-        // Set token
-        console.log('Setting auth token');
-        localStorage.setItem('auth_token', token);
-        authApi.setAuthToken(token);
-
-        // Set user state
-        console.log('Setting user state:', userData);
-        setUser(userData);
-        console.log('User state after set:', userData);
-      } else {
-        console.error('Invalid response format:', response);
+      if (!response || response.status !== 'success' || !response.data) {
         throw new Error('Invalid response format');
       }
+
+      const { token, user: userData } = response.data;
+
+      if (!token || !userData) {
+        throw new Error('Missing token or user data');
+      }
+
+      // Store token
+      localStorage.setItem('auth_token', token);
+      authApi.setAuthToken(token);
+
+      // Update user state with waiting
+      await new Promise<void>(resolve => {
+        setUser(userData);
+        setTimeout(() => {
+          console.log('User state updated:', userData);
+          resolve();
+        }, 0);
+      });
+
     } catch (error) {
-      console.error('Login error details:', error);
+      console.error('Login error:', error);
       localStorage.removeItem('auth_token');
       authApi.setAuthToken(null);
       setUser(null);
@@ -127,19 +114,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      if (error instanceof Error) {
-        throw error;
-      }
-
-      throw new Error('Login failed');
+      throw error instanceof Error ? error : new Error('Login failed');
     } finally {
       setIsLoading(false);
-      // Log final state
-      console.log('Login attempt completed. Final state:', {
-        user: user,
-        isLoading: false,
-        isInitialized: true
-      });
     }
   };
 
@@ -150,19 +127,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await authApi.register(email, password);
       console.log('Register response:', response);
 
-      if (response && response.status === 'success' && response.data) {
-        const { token, user: userData } = response.data;
-        
-        if (token) {
-          localStorage.setItem('auth_token', token);
-          authApi.setAuthToken(token);
-        }
-
-        if (userData) {
-          setUser(userData);
-        }
+      if (!response || response.status !== 'success' || !response.data) {
+        throw new Error('Invalid response format');
       }
+
+      const { token, user: userData } = response.data;
+
+      if (!token || !userData) {
+        throw new Error('Missing token or user data');
+      }
+
+      localStorage.setItem('auth_token', token);
+      authApi.setAuthToken(token);
+
+      await new Promise<void>(resolve => {
+        setUser(userData);
+        setTimeout(() => {
+          console.log('User state updated after registration:', userData);
+          resolve();
+        }, 0);
+      });
+
     } catch (error) {
+      localStorage.removeItem('auth_token');
+      authApi.setAuthToken(null);
+      setUser(null);
+
       if (error instanceof ValidationException) {
         const passwordErrors = error.errors
           ?.filter(err => err.field === 'password')
@@ -179,7 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
-    console.log('Logout...');
+    console.log('Logging out...');
     localStorage.removeItem('auth_token');
     authApi.setAuthToken(null);
     setUser(null);

@@ -1,3 +1,4 @@
+// src/app/root-layout.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -26,25 +27,48 @@ export default function RootLayout({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showLogoutSuccess, setShowLogoutSuccess] = useState(false);
   const router = useRouter();
-  const { user, logout, isLoading } = useAuth();
+  const { user, isLoading, isInitialized, logout } = useAuth();
 
+  // Debug auth state changes
   useEffect(() => {
     console.log('RootLayout auth state:', {
       isAuthenticated: !!user,
       user,
-      isLoading
+      isLoading,
+      isInitialized
     });
-  }, [user, isLoading]);
+  }, [user, isLoading, isInitialized]);
 
-  const handleLogout = () => {
-    logout();
-    setShowLogoutSuccess(true);
+  // Close mobile menu when auth state changes
+  useEffect(() => {
     setIsMobileMenuOpen(false);
-    setTimeout(() => {
+  }, [user]);
+
+  const handleLogout = async () => {
+    try {
+      logout();
+      setShowLogoutSuccess(true);
+      setIsMobileMenuOpen(false);
+      
+      await new Promise(resolve => setTimeout(resolve, 1500));
       router.push('/');
       setShowLogoutSuccess(false);
-    }, 1500);
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Handle any logout errors here
+    }
   };
+
+  // Wait for auth to initialize
+  if (!isInitialized || isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="text-gray-600">
+          {!isInitialized ? 'Initializing...' : 'Loading...'}
+        </div>
+      </div>
+    );
+  }
 
   const allNavigationItems = user 
     ? [...navigationItems, ...authNavigationItems]
@@ -75,14 +99,6 @@ export default function RootLayout({
     disabled:opacity-50 disabled:cursor-not-allowed
   `;
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="text-gray-600">Loading...</div>
-      </div>
-    );
-  }
-
   return (
     <div className={`min-h-screen ${user ? 'bg-gray-50' : 'bg-white'} transition-colors duration-200`}>
       {showLogoutSuccess && (
@@ -96,6 +112,7 @@ export default function RootLayout({
       <header className={headerClasses}>
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex justify-between items-center h-16">
+            {/* Left side */}
             <div className="flex items-center gap-4">
               <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
