@@ -1,3 +1,6 @@
+// app/videos/my-videos/page.tsx
+'use client';
+
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, AlertCircle, SlidersHorizontal } from 'lucide-react';
@@ -45,9 +48,16 @@ export default function MyVideosPage() {
         setIsLoading(true);
         setError(null);
         const queryString = `?page=${page}&limit=10&filter=${filter}&sort=${sort}`;
-        const response = await api.get<VideoResponse>(`/videos/user${queryString}`);
-        setVideos(response.videos);
-        setTotalPages(response.pages);
+        // Just use 'videos/user' since '/api' is now in the base URL
+        const response = await api.get<VideoResponse>(`videos/user${queryString}`);
+        
+        // Make sure we're handling the response structure correctly
+        if (response && 'videos' in response) {
+          setVideos(response.videos);
+          setTotalPages(response.pages);
+        } else {
+          throw new Error('Invalid response format');
+        }
       } catch (error) {
         console.error('Error fetching videos:', error);
         setError('Failed to load videos');
@@ -58,7 +68,6 @@ export default function MyVideosPage() {
 
     fetchUserVideos();
   }, [user, router, page, filter, sort]);
-
   if (isLoading) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-8">
