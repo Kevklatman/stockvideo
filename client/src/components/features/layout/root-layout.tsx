@@ -99,6 +99,14 @@ export default function RootLayout({
                   {item.label}
                 </Link>
               ))}
+              {user && (
+  <Link
+    href="/videos/upload"
+    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+  >
+    Upload Video
+  </Link>
+)}
               
               {/* Auth Section */}
               <div className="pl-4 border-l border-gray-200">
@@ -154,6 +162,16 @@ export default function RootLayout({
                   {item.label}
                 </Link>
               ))}
+
+{user && (
+  <Link
+    href="/videos/upload"
+    className="block px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+    onClick={() => setIsMobileMenuOpen(false)}
+  >
+    Upload Video
+  </Link>
+)}
               
               {/* Mobile Auth Section */}
               {user ? (
