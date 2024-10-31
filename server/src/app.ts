@@ -1,4 +1,4 @@
-// src/app.ts
+// server/src/app.ts
 import 'reflect-metadata';
 import express from "express";
 import dotenv from "dotenv";
@@ -8,10 +8,25 @@ import { authRouter } from "./routes/auth.routes";
 import { videoRouter } from "./routes/video.routes";
 import { security } from "./config/security";
 import { errorHandler } from "./middleware/error.middleware";
-import { useContainer, useExpressServer } from "routing-controllers";
+import { useContainer} from "routing-controllers";
 import { Container } from "typedi";
 
-dotenv.config();
+// Load environment variables early
+dotenv.config({ path: path.join(__dirname, '../.env') });
+
+// Log environment variables to verify they're loaded
+console.log('Environment loaded:', {
+  aws: {
+    region: process.env.AWS_REGION,
+    bucket: process.env.AWS_BUCKET_NAME,
+    hasAccessKey: !!process.env.AWS_ACCESS_KEY_ID,
+    hasSecretKey: !!process.env.AWS_SECRET_ACCESS_KEY
+  },
+  server: {
+    port: process.env.PORT,
+    env: process.env.NODE_ENV
+  }
+});
 
 // Initialize reflect-metadata
 useContainer(Container);

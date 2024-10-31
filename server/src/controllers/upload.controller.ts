@@ -1,18 +1,26 @@
 // src/controllers/upload.controller.ts
-import { Request, Response } from 'express';
-import { S3Client } from '@aws-sdk/client-s3';
-import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import crypto from 'crypto';
+import { Request, Response } from 'express';
+
+// Add debugging
+console.log('Loading upload controller with AWS config:', {
+  region: process.env.AWS_REGION,
+  bucket: process.env.AWS_BUCKET_NAME,
+  hasAccessKey: !!process.env.AWS_ACCESS_KEY_ID,
+  hasSecretKey: !!process.env.AWS_SECRET_ACCESS_KEY
+});
+
+const BUCKET_NAME = process.env.AWS_BUCKET_NAME;
 
 const s3Client = new S3Client({
-  region: process.env.AWS_REGION!,
+  region: process.env.AWS_REGION,
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
   },
 });
-
-const BUCKET_NAME = process.env.AWS_BUCKET_NAME!;
 
 export class UploadController {
   static async getUploadUrl(req: Request, res: Response) {
@@ -24,28 +32,44 @@ export class UploadController {
       }
 
       const videoId = crypto.randomUUID();
-      const key = `${videoId}${getFileExtension(contentType)}`;
+      const key = `videos/${videoId}${getFileExtension(contentType)}`;
 
-      const { url, fields } = await createPresignedPost(s3Client, {
-        Bucket: BUCKET_NAME,
+      // Create the command
+      const command = new PutObjectCommand({
+        Bucket: process.env.AWS_BUCKET_NAME,
         Key: key,
-        Conditions: [
-          ['content-length-range', 0, 100 * 1024 * 1024], // 100MB max
-          ['starts-with', '$Content-Type', contentType],
-        ],
-        Expires: 3600, // 1 hour
+        ContentType: contentType
       });
 
-      res.json({
-        url,
-        fields,
+      console.log('Generating signed URL with params:', {
+        bucket: BUCKET_NAME,
+        key,
+        contentType
+      });
+
+      // Generate signed URL
+      const signedUrl = await getSignedUrl(s3Client, command, {
+        expiresIn: 3600
+      });
+
+      return res.json({
         videoId,
-        key
+        key,
+        uploadUrl: signedUrl,
+        contentType
       });
 
     } catch (error) {
-      console.error('Upload error:', error);
-      res.status(500).json({ error: 'Failed to generate upload URL' });
+      console.error('Upload URL generation error:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        bucket: BUCKET_NAME,
+        region: process.env.AWS_REGION
+      });
+
+      return res.status(500).json({
+        error: 'Failed to generate upload URL',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   }
 }

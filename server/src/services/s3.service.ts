@@ -1,12 +1,16 @@
 // src/services/s3.service.ts
 import { 
   S3Client, 
-  PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
+
+import dotenv from 'dotenv';
+
+// Force load environment variables
+dotenv.config();
 
 export class S3Service {
   private s3Client: S3Client;
@@ -24,7 +28,7 @@ export class S3Service {
 
     this.bucket = process.env.AWS_BUCKET_NAME!;
   }
-
+  
   // Generate presigned URL for direct upload
   async getPresignedUploadUrl(key: string, contentType: string) {
     try {

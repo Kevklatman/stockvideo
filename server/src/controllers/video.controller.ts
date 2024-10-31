@@ -55,7 +55,7 @@ export class VideoController {
       const key = `videos/${req.user.id}/${videoId}/${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
 
       const command = new PutObjectCommand({
-        Bucket: process.env.AWS_S3_BUCKET!,
+        Bucket: process.env.AWS_BUCKET_NAME!,
         Key: key,
         ContentType: contentType,
       });
