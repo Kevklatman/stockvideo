@@ -39,7 +39,7 @@ export default function MyVideosPage() {
 
   useEffect(() => {
     if (!user) {
-      router.push('/login?redirect=/videos/my-videos');
+      router.push('/login?redirect=/api/videos/my-videos');
       return;
     }
 
@@ -49,7 +49,7 @@ export default function MyVideosPage() {
         setError(null);
         const queryString = `?page=${page}&limit=10&filter=${filter}&sort=${sort}`;
         // Just use 'videos/user' since '/api' is now in the base URL
-        const response = await api.get<VideoResponse>(`videos/user${queryString}`);
+        const response = await api.get<VideoResponse>(`/api/videos/user${queryString}`);
         
         // Make sure we're handling the response structure correctly
         if (response && 'videos' in response) {
