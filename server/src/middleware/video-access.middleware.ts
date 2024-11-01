@@ -144,7 +144,48 @@ export class VideoAccessMiddleware {
       });
     }
   };
+  static hasOwnerAccess: RequestHandler<
+  VideoRequestParams,
+  any,
+  any,
+  StreamQueryParams,
+  VideoResponseLocals
+> = async (req, res, next): Promise<void> => {
+  try {
+    const { videoId } = req.params;
+    const userId = (req as AuthenticatedVideoRequest).user?.id;
 
+    if (!videoId) {
+      res.status(400).json({ 
+        message: "Video ID is required" 
+      });
+      return;
+    }
+
+    if (!userId) {
+      res.status(401).json({ 
+        message: "Authentication required" 
+      });
+      return;
+    }
+
+    const isOwner = await VideoAccessService.isVideoOwner(videoId, userId);
+    
+    if (isOwner) {
+      res.locals.hasFullAccess = true;
+      res.locals.isOwner = true;
+      next();
+      return;
+    }
+
+    // If not owner, continue to regular access check
+    next();
+  } catch (error) {
+    res.status(500).json({ 
+      message: "Error checking video ownership" 
+    });
+  }
+};
   /**
    * Middleware for validating streaming tokens
    */
@@ -287,6 +328,7 @@ export class VideoAccessMiddleware {
       VideoAccessMiddleware.checkProcessingStatus,
       VideoAccessMiddleware.handleFormatCompatibility,
       VideoAccessMiddleware.handlePartialContent,
+      VideoAccessMiddleware.hasOwnerAccess,
       VideoAccessMiddleware.fullVideoAccess
     ] as RequestHandler[],
     preview: [
@@ -297,6 +339,7 @@ export class VideoAccessMiddleware {
     download: [
       VideoAccessMiddleware.cors,
       VideoAccessMiddleware.checkProcessingStatus,
+      VideoAccessMiddleware.hasOwnerAccess,
       VideoAccessMiddleware.download
     ] as RequestHandler[],
     validateStream: [

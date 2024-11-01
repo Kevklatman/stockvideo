@@ -315,7 +315,43 @@ export class VideoAccessService {
       return null;
     }
   }
+/**
+ * Checks if a user is the owner of a video
+ */
+static async isVideoOwner(videoId: string, userId: string): Promise<boolean> {
+  try {
+    const video = await this.videoRepository.findOne({
+      where: { id: videoId }
+    });
 
+    if (!video) {
+      throw new VideoAccessError('Video not found');
+    }
+
+    // Check cache first
+    const cacheKey = `video:owner:${videoId}:${userId}`;
+    const cachedResult = await this.redis.get(cacheKey);
+    
+    if (cachedResult !== null) {
+      return cachedResult === 'true';
+    }
+
+    const isOwner = video.userId === userId;
+
+    // Cache the result for 1 hour
+    await this.redis.setex(cacheKey, 3600, isOwner.toString());
+
+    return isOwner;
+  } catch (error) {
+    if (error instanceof VideoAccessError) {
+      throw error;
+    }
+    if (error instanceof Error) {
+      throw new VideoAccessError(`Failed to check video ownership: ${error.message}`);
+    }
+    throw new VideoAccessError('Failed to check video ownership due to an unknown error');
+  }
+}
   /**
    * Processes a download token and returns download URL
    */

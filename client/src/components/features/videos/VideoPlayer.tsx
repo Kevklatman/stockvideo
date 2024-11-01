@@ -10,10 +10,9 @@ interface VideoPlayerProps {
   previewMode?: boolean;
   isPurchased?: boolean;
   onPurchaseClick?: () => void;
-
 }
 
-export default function VideoPlayer({ videoId, previewMode = false, onPurchaseClick }: VideoPlayerProps) {
+export default function VideoPlayer({ videoId, url, previewMode = false, onPurchaseClick, isPurchased }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -31,15 +30,20 @@ export default function VideoPlayer({ videoId, previewMode = false, onPurchaseCl
         setIsLoading(true);
         setError(null);
 
-        // Get the appropriate stream URL based on mode
-        const endpoint = previewMode 
-          ? `/api/videos/${videoId}/preview`
-          : `/api/videos/${videoId}/stream`;
-
-        const response = await api.get<{ url: string }>(endpoint);
-        
         if (videoRef.current) {
+          // If we have a direct URL and the video is purchased or it's the user's own video,
+          // use it directly
+          if (url && (isPurchased || !previewMode)) {
+            videoRef.current.src = url;
+          } else {
+            // Otherwise, fetch the preview or stream URL
+            const endpoint = previewMode 
+              ? `/api/videos/${videoId}/preview`
+              : `/api/videos/${videoId}/stream`;
+
+            const response = await api.get<{ url: string }>(endpoint);
             videoRef.current.src = response.url;
+          }
         }
       } catch (error) {
         setError('Failed to load video');
@@ -50,7 +54,7 @@ export default function VideoPlayer({ videoId, previewMode = false, onPurchaseCl
     };
 
     initializeVideo();
-  }, [videoId, previewMode]);
+  }, [videoId, previewMode, url, isPurchased]);
 
   const togglePlay = () => {
     if (videoRef.current) {

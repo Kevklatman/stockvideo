@@ -19,6 +19,9 @@ export interface VideoResponseLocals {
   downloadToken?: string;
   streamUrl?: string;
   range?: string;
+  isOwner?: boolean;
+  hasFullAccess?: boolean;
+  isVideoOwner?: boolean;
   preferredFormat?: 'hls' | 'mp4';
 }
 
