@@ -52,8 +52,8 @@ export interface PresignedUploadData {
 
 export interface VideoUrls {
   streamingUrl: string;
-  thumbnailUrl: string;
   previewUrl: string;
+  thumbnailUrl: string;
 }
 
 interface FetchOptions extends Omit<RequestInit, 'body'> {
@@ -332,11 +332,12 @@ export const api = {
     fetchApi<T>(endpoint, { ...options, method: 'DELETE' }),
 
   videos: {
-    // Get upload URL for direct S3 upload
     getUploadUrl: (fileType: string) =>
-      api.post<PresignedUploadData>('/videos/upload-url', { fileType }),
+      api.post<PresignedUploadData>('/api/videos/upload-url', { fileType }),
 
-    // Upload file directly to S3 using presigned URL
+    getUrls: (videoId: string) =>
+      api.get<VideoUrls>(`/api/videos/${videoId}/urls`),
+
     uploadToS3: async (
       presignedData: PresignedUploadData,
       file: File,
@@ -381,11 +382,6 @@ export const api = {
       });
     },
 
-    // Get video URLs (streaming and thumbnail)
-    getUrls: (videoId: string) =>
-      api.get<VideoUrls>(`/videos/${videoId}/urls`),
-
-    // Upload video with progress tracking
     upload: async (
       file: File,
       onProgress?: (event: UploadProgressEvent) => void
@@ -393,7 +389,7 @@ export const api = {
       const presignedData = await api.videos.getUploadUrl(file.type);
       await api.videos.uploadToS3(presignedData, file, onProgress);
       
-      const response = await api.post<{ id: string }>('/videos', {
+      const response = await api.post<{ id: string }>('/api/videos', {
         filename: file.name,
         fileType: file.type,
         fileSize: file.size
@@ -402,8 +398,7 @@ export const api = {
       return response.id;
     },
 
-    // Delete video
     delete: (videoId: string) =>
-      api.delete(`/videos/${videoId}`),
+      api.delete(`/api/videos/${videoId}`)
   }
 };

@@ -157,46 +157,50 @@ private static async validateCreateVideo(videoData: CreateVideoDto): Promise<str
   /**
    * Get a single video by ID
    */
-  static async getVideo(videoId: string, includePrivate = false): Promise<Video | null> {
-    try {
-      // Check cache first
-      const cachedVideo = await this.getCachedVideo(videoId);
-      if (cachedVideo) {
-        if (includePrivate) {
-          return cachedVideo;
-        }
-      }
-
-      const video = await this.videoRepository.findOne({
-        where: { id: videoId },
-        relations: ['user'],
-        select: includePrivate ? undefined : {
-          id: true,
-          title: true,
-          description: true,
-          price: true,
-          previewUrl: true,
-          fullVideoUrl: true,
-          createdAt: true,
-          user: {
-            id: true,
-            email: true
-          }
-        }
-      });
-
-      if (video) {
-        await this.cacheVideoData(video);
-      }
-
-      return video;
-    } catch (error) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to fetch video: ${error.message}`);
-      }
-      throw new Error('Failed to fetch video');
+// In VideoService
+static async getVideo(videoId: string, includePrivate = false): Promise<Video | null> {
+  try {
+    // Check cache first
+    const cachedVideo = await this.getCachedVideo(videoId);
+    if (cachedVideo) {
+      return cachedVideo;
     }
+
+    // Log the search attempt
+    console.log('Searching for video:', videoId);
+
+    const video = await this.videoRepository.findOne({
+      where: { id: videoId },
+      relations: ['user'],
+      select: includePrivate ? undefined : {
+        id: true,
+        title: true,
+        description: true,
+        price: true,
+        previewUrl: true,
+        fullVideoUrl: true,
+        createdAt: true,
+        user: {
+          id: true,
+          email: true
+        }
+      }
+    });
+
+    if (video) {
+      // Cache the video data
+      await this.cacheVideoData(video);
+      console.log('Found video:', video.id);
+    } else {
+      console.log('No video found with ID:', videoId);
+    }
+
+    return video;
+  } catch (error) {
+    console.error('Error fetching video:', error);
+    throw error;
   }
+}
 
   // Removed duplicate getUserVideos method
 

@@ -42,7 +42,10 @@ console.log('Environment loaded:', {
 useContainer(Container);
 
 const app = express();
-
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.url}`);
+  next();
+});
 // Basic middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));

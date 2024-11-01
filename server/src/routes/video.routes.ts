@@ -95,12 +95,18 @@ router.get(
   ...VideoAccessMiddleware.middlewareChain.fullVideoAccess,
   VideoController.getVideoUrls
 );
+router.get("/:videoId/urls", VideoController.getVideoUrls);
 
 // Upload URL routes
 router.post(
   '/upload-url',
   authMiddleware,
   UploadController.getUploadUrl
+);
+
+router.get(
+  "/:videoId/urls",
+  VideoController.getVideoUrls
 );
 
 export { router as videoRouter };

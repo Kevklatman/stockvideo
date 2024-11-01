@@ -146,26 +146,43 @@ static async getUploadUrl(req: Request, res: Response) {
     }
   }
 // In VideoController
+// src/controllers/video.controller.ts
+
 static async getVideoUrls(req: Request, res: Response) {
   try {
     const { videoId } = req.params;
+    
+    // Add logging to debug
+    console.log('Getting URLs for video:', videoId);
+
     const video = await VideoService.getVideo(videoId);
 
     if (!video) {
+      console.log('Video not found:', videoId);
       return res.status(404).json({
         status: 'error',
+        code: 'VIDEO_NOT_FOUND',
         message: 'Video not found'
       });
     }
 
+    // Add more logging
+    console.log('Found video:', {
+      id: video.id,
+      hasFullUrl: !!video.fullVideoUrl,
+      hasPreviewUrl: !!video.previewUrl
+    });
+
     return res.json({
       status: 'success',
       data: {
-        fullVideoUrl: video.fullVideoUrl,
-        previewUrl: video.previewUrl
+        streamingUrl: video.fullVideoUrl,
+        previewUrl: video.previewUrl,
+        thumbnailUrl: video.previewUrl // or a separate thumbnail if you have one
       }
     });
   } catch (error) {
+    console.error('Error getting video URLs:', error);
     return res.status(500).json({
       status: 'error',
       message: 'Failed to fetch video URLs'
