@@ -1,4 +1,3 @@
-// src/services/s3.service.ts
 import { 
   S3Client, 
   GetObjectCommand,
@@ -6,18 +5,20 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
-
+import { getSignedUrl as getCloudFrontSignedUrl } from '@aws-sdk/cloudfront-signer';
 import dotenv from 'dotenv';
+import { Request, Response } from 'express';
 
-// Force load environment variables
 dotenv.config();
 
 export class S3Service {
   private s3Client: S3Client;
   private bucket: string;
+  private cloudFrontDomain: string;
+  private cloudFrontKeyPairId: string;
+  private cloudFrontPrivateKey: string;
 
   constructor() {
-    // Initialize S3 client
     this.s3Client = new S3Client({
       region: process.env.AWS_REGION,
       credentials: {
@@ -27,92 +28,103 @@ export class S3Service {
     });
 
     this.bucket = process.env.AWS_BUCKET_NAME!;
-  }
-  
-  // Generate presigned URL for direct upload
-  async getPresignedUploadUrl(key: string, contentType: string) {
-    try {
-      const { url, fields } = await createPresignedPost(this.s3Client, {
-        Bucket: this.bucket,
-        Key: key,
-        Conditions: [
-          ['content-length-range', 0, 100 * 1024 * 1024], // 100MB max
-          ['starts-with', '$Content-Type', contentType],
-        ],
-        Expires: 3600, // 1 hour
-      });
-
-      return { url, fields };
-    } catch (error) {
-      console.error('Error generating presigned URL:', error);
-      throw new Error('Failed to generate upload URL');
-    }
+    this.cloudFrontDomain = process.env.CLOUDFRONT_DOMAIN!;
+    this.cloudFrontKeyPairId = process.env.CLOUDFRONT_KEY_PAIR_ID!;
+    this.cloudFrontPrivateKey = process.env.CLOUDFRONT_PRIVATE_KEY!;
   }
 
-  // Generate a presigned URL for video streaming
-  async getSignedStreamingUrl(key: string) {
-    try {
-      const command = new GetObjectCommand({
-        Bucket: this.bucket,
-        Key: key,
-      });
-
-      return await getSignedUrl(this.s3Client, command, {
-        expiresIn: 3600 // 1 hour
-      });
-    } catch (error) {
-      console.error('Error generating streaming URL:', error);
-      throw new Error('Failed to generate streaming URL');
-    }
-  }
-
-  // Delete a file from S3
-  async deleteFile(key: string) {
-    try {
-      const command = new DeleteObjectCommand({
-        Bucket: this.bucket,
-        Key: key,
-      });
-
-      await this.s3Client.send(command);
-    } catch (error) {
-      console.error('Error deleting file:', error);
-      throw new Error('Failed to delete file');
-    }
-  }
-
-  // Get a presigned URL for direct browser upload
-  async getPresignedUploadUrlForVideo(videoId: string, fileType: string) {
-    const key = `videos/${videoId}/original${this.getFileExtension(fileType)}`;
-    return this.getPresignedUploadUrl(key, fileType);
-  }
-
-  // Get a streaming URL for a video
   async getVideoStreamingUrl(videoId: string) {
-    const key = `videos/${videoId}/processed/stream.m3u8`;
-    return this.getSignedStreamingUrl(key);
+    const streamPath = `/videos/${videoId}/processed/stream.m3u8`;
+    const url = `https://${this.cloudFrontDomain}${streamPath}`;
+    
+    return getCloudFrontSignedUrl({
+      url,
+      keyPairId: this.cloudFrontKeyPairId,
+      privateKey: this.cloudFrontPrivateKey,
+      dateLessThan: new Date(Date.now() + 3600 * 1000).toISOString() // 1 hour
+    });
   }
 
-  // Get a thumbnail URL
   async getThumbnailUrl(videoId: string) {
-    const key = `videos/${videoId}/thumbnail.jpg`;
-    const command = new GetObjectCommand({
+    const thumbnailPath = `/videos/${videoId}/thumbnail.jpg`;
+    const url = `https://${this.cloudFrontDomain}${thumbnailPath}`;
+    
+    return getCloudFrontSignedUrl({
+      url,
+      keyPairId: this.cloudFrontKeyPairId,
+      privateKey: this.cloudFrontPrivateKey,
+      dateLessThan: new Date(Date.now() + 3600 * 1000).toISOString()
+    });
+  }
+
+  async createPresignedPost(key: string, contentType: string, options: { maxSize: number }) {
+    return createPresignedPost(this.s3Client, {
       Bucket: this.bucket,
       Key: key,
+      Conditions: [
+        ['content-length-range', 0, options.maxSize],
+        ['eq', '$Content-Type', contentType],
+      ],
+      Fields: {
+        'Content-Type': contentType,
+      },
+      Expires: 3600,
     });
-
-    return getSignedUrl(this.s3Client, command, { expiresIn: 3600 });
-  }
-
-  private getFileExtension(contentType: string): string {
-    const extensions: { [key: string]: string } = {
-      'video/mp4': '.mp4',
-      'video/quicktime': '.mov',
-      'video/x-msvideo': '.avi'
-    };
-    return extensions[contentType] || '.mp4';
   }
 }
 
-// Export singleton instance
 export const s3Service = new S3Service();
+
+// Express route handler
+export async function handleUploadRequest(req: Request, res: Response) {
+  if (!req.user) {
+    return res.status(401).json({
+      status: 'error',
+      code: 'UNAUTHORIZED',
+      message: 'Invalid token'
+    });
+  }
+
+  try {
+    const { key, contentType, fileSize } = req.body;
+
+    if (!key || !contentType || !fileSize) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'MISSING_FIELDS',
+        message: 'Missing required fields: key, contentType, or fileSize',
+      });
+    }
+
+    const MAX_FILE_SIZE = 100 * 1024 * 1024;
+    if (fileSize > MAX_FILE_SIZE) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'FILE_TOO_LARGE',
+        message: 'File size exceeds maximum limit of 100MB',
+      });
+    }
+
+    const presignedPost = await s3Service.createPresignedPost(key, contentType, {
+      maxSize: MAX_FILE_SIZE,
+    });
+
+    const videoId = key.split('/').pop()?.split('.')[0];
+    const streamingUrl = videoId ? await s3Service.getVideoStreamingUrl(videoId) : null;
+
+    return res.json({
+      status: 'success',
+      data: {
+        ...presignedPost,
+        streamingUrl,
+      }
+    });
+  } catch (error) {
+    console.error('Error generating upload URL:', error);
+    return res.status(500).json({
+      status: 'error',
+      code: 'UPLOAD_URL_GENERATION_FAILED',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+}

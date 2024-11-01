@@ -10,6 +10,7 @@ import {
 } from "../middleware/video-upload.middleware";
 import { UploadController } from "../controllers/upload.controller";
 
+// Create the router instance
 const router = Router();
 
 // Public routes
@@ -27,7 +28,7 @@ router.post(
   "/upload",
   videoUpload.single('video'),
   validateUploadedFile,
-  (err: unknown, req: Request, res: Response, next: NextFunction) => {
+  (err: any, req: Request, res: Response, next: NextFunction) => {
     if (err) {
       handleUploadError(err, req, res, next);
     } else {
@@ -88,16 +89,18 @@ router.get(
   VideoController.searchVideos
 );
 
-// In your video.routes.ts
-router.post('/upload-url',
-  authMiddleware,
-  VideoController.getUploadUrl
+// Get video URLs
+router.get(
+  "/:videoId/urls",
+  ...VideoAccessMiddleware.middlewareChain.fullVideoAccess,
+  VideoController.getVideoUrls
 );
-router.post('/save-video', VideoController.uploadVideo);
 
-router.post('/upload-url', UploadController.getUploadUrl);
-
-// Finalize upload route
-router.post('/finalize', UploadController.finalizeUpload);
+// Upload URL routes
+router.post(
+  '/upload-url',
+  authMiddleware,
+  UploadController.getUploadUrl
+);
 
 export { router as videoRouter };

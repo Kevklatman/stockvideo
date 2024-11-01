@@ -17,6 +17,7 @@ export const authMiddleware = async (
 ): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
+    console.log('Auth header present:', !!authHeader);
     
     if (!authHeader?.startsWith("Bearer ")) {
       res.status(401).json({
@@ -46,14 +47,15 @@ export const authMiddleware = async (
       next();
     } catch (error) {
       console.error('Token validation error:', error);
-      
       res.status(401).json({
         status: 'error',
         code: 'INVALID_TOKEN',
         message: "Invalid or expired token"
       });
+        return;
+      }
     }
-  } catch (error) {
+   catch (error) {
     console.error('Auth middleware error:', error);
     
     if (error instanceof Error) {

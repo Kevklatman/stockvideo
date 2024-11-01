@@ -1,5 +1,17 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useAuth } from '@/providers/auth-provider';
+import { api } from '@/lib/api';
+
+interface UploadUrlResponse {
+  url: string;
+  videoId: string;
+  key: string;
+}
+
+interface ApiResponse<T> {
+  status: 'success';
+  data: T;
+}
 
 export default function VideoUpload() {
   const { user } = useAuth();
@@ -9,68 +21,94 @@ export default function VideoUpload() {
   const [isLoading, setIsLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // New form data states
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [price, setPrice] = useState<string>('');
-  const [previewUrl, setPreviewUrl] = useState('');
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    price: '',
+    previewUrl: ''
+  });
   const [thumbnail, setThumbnail] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
+  const [videoKey, setVideoKey] = useState<string>('');
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFormChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  }, []);
+
+  const resetForm = useCallback(() => {
+    setFormData({
+      title: '',
+      description: '',
+      price: '',
+      previewUrl: ''
+    });
+    setFile(null);
+    setUploadUrl(null);
+    setThumbnail(null);
+    setVideoUrl(null);
+    setCurrentTime(0);
+    setUploadProgress(0);
+    setVideoKey('');
+  }, []);
+
+  const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
-    if (selectedFile) {
-      if (selectedFile.size > 100 * 1024 * 1024) {
-        setError('File size must be less than 100MB');
-        return;
-      }
-      setFile(selectedFile);
-      setError(null);
-      setUploadUrl(null);
-      setUploadProgress(0);
+    if (!selectedFile) return;
 
-      // Create URL for video preview
-      const url = URL.createObjectURL(selectedFile);
-      setVideoUrl(url);
-      setThumbnail(null); // Reset thumbnail when new video is selected
+    if (selectedFile.size > 100 * 1024 * 1024) {
+      setError('File size must be less than 100MB');
+      return;
     }
-  };
 
-  const handleTimeUpdate = () => {
+    // Generate a unique key for the video
+    const uniquePrefix = Date.now().toString();
+    const sanitizedFileName = selectedFile.name.replace(/[^a-zA-Z0-9.]/g, '_');
+    const newVideoKey = `videos/${uniquePrefix}-${sanitizedFileName}`;
+    setVideoKey(newVideoKey);
+
+    setFile(selectedFile);
+    setError(null);
+    setUploadUrl(null);
+    setUploadProgress(0);
+    setVideoUrl(URL.createObjectURL(selectedFile));
+    setThumbnail(null);
+  }, []);
+
+  const handleTimeUpdate = useCallback(() => {
     if (videoRef.current) {
       setCurrentTime(videoRef.current.currentTime);
     }
-  };
+  }, []);
 
-  const captureThumbnail = () => {
-    if (videoRef.current && canvasRef.current) {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      const context = canvas.getContext('2d');
+  const captureThumbnail = useCallback(() => {
+    if (!videoRef.current || !canvasRef.current) return;
 
-      // Set canvas dimensions to match video
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
 
-      // Draw the current video frame
-      context?.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    context?.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    setThumbnail(canvas.toDataURL('image/jpeg'));
+  }, []);
 
-      // Convert to base64
-      const thumbnailUrl = canvas.toDataURL('image/jpeg');
-      setThumbnail(thumbnailUrl);
-    }
-  };
-
-  const validateForm = () => {
-    if (!title.trim()) {
+  const validateForm = useCallback(() => {
+    if (!formData.title.trim()) {
       setError('Title is required');
       return false;
     }
-    if (!price || parseFloat(price) < 0) {
+    if (!formData.price || parseFloat(formData.price) < 0) {
       setError('Valid price is required');
       return false;
     }
@@ -78,66 +116,66 @@ export default function VideoUpload() {
       setError('Please capture a thumbnail before uploading');
       return false;
     }
+    if (!file) {
+      setError('Please select a video file');
+      return false;
+    }
     return true;
-  };
+  }, [formData.title, formData.price, thumbnail, file]);
 
-  const getUploadUrl = async (contentType: string) => {
-    if (!user) {
-      setError('Not authenticated');
+  const getUploadUrl = useCallback(async () => {
+    if (!user || !file || !videoKey) {
+      setError('Not authenticated or no file selected');
       return;
     }
-
-    if (!validateForm()) {
-      return;
-    }
-
+  
+    if (!validateForm()) return;
+  
     setIsLoading(true);
     setError(null);
-
+  
     try {
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/videos/upload-url', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          filename: file?.name,
-          contentType: contentType,
-          fileSize: file?.size,
-          title,
-          description,
-          price: parseFloat(price),
-          previewUrl
-        })
+      console.log('Requesting upload URL with:', {
+        contentType: file.type,
+        fileSize: file.size,
+        videoKey
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || `Failed to get upload URL: ${response.statusText}`);
+  
+      const token = localStorage.getItem('auth_token');
+      const response = await api.post<ApiResponse<UploadUrlResponse>>('/api/videos/upload-url', {
+        contentType: file.type,
+        fileSize: file.size,
+        videoKey
+      }, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+  
+      console.log('Upload URL response:', response);
+  
+      if (!response.data?.url) {
+        throw new Error('No upload URL received');
       }
-
-      if (data.status !== 'success' || !data.data?.url) {
-        throw new Error('Invalid response format from server');
-      }
-
-      setUploadUrl(data.data.url);
-
+  
+      setUploadUrl(response.data.url);
+      setVideoKey(response.data.key);
+  
     } catch (error) {
       console.error('Error getting upload URL:', error);
       setError(error instanceof Error ? error.message : 'Failed to get upload URL');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user, file, videoKey, validateForm]);
 
-  const uploadFile = async () => {
-    if (!file || !uploadUrl) return;
+  const uploadFile = useCallback(async () => {
+    if (!file || !uploadUrl || !videoKey) return;
 
     setIsUploading(true);
     setError(null);
+    setIsSubmitting(true);
     
     try {
       const xhr = new XMLHttpRequest();
@@ -156,8 +194,9 @@ export default function VideoUpload() {
         xhr.onload = async () => {
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
-              // After successful upload, create the video record
               const token = localStorage.getItem('auth_token');
+              const cloudfrontUrl = `${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/${videoKey}`;
+              
               const response = await fetch('/api/videos', {
                 method: 'POST',
                 headers: {
@@ -165,11 +204,10 @@ export default function VideoUpload() {
                   'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({
-                  title,
-                  description,
-                  price: parseFloat(price),
-                  previewUrl,
-                  fullVideoUrl: uploadUrl // or get the final URL from the server response
+                  ...formData,
+                  fullVideoUrl: cloudfrontUrl,
+                  thumbnailUrl: thumbnail,
+                  videoKey: videoKey
                 })
               });
 
@@ -193,15 +231,7 @@ export default function VideoUpload() {
       });
 
       setUploadProgress(100);
-      setError(null);
-
-      // Reset form after successful upload
-      setTitle('');
-      setDescription('');
-      setPrice('');
-      setPreviewUrl('');
-      setFile(null);
-      setUploadUrl(null);
+      resetForm();
 
     } catch (error) {
       console.error('Error uploading file:', error);
@@ -209,197 +239,206 @@ export default function VideoUpload() {
       setUploadProgress(0);
     } finally {
       setIsUploading(false);
+      setIsSubmitting(false);
     }
-  };
+  }, [file, uploadUrl, videoKey, formData, thumbnail, resetForm]);
 
   if (!user) {
     return <div className="p-4 text-red-500">Please log in to upload videos</div>;
   }
-
+  
   return (
-    <div className="p-4">
-      <div className="space-y-4">
-        {/* Previous form fields remain the same */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Title *
-          </label>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Description
-          </label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={4}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Price ($) *
-          </label>
-          <input
-            type="number"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            step="0.01"
-            min="0"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Preview URL
-          </label>
-          <input
-            type="url"
-            value={previewUrl}
-            onChange={(e) => setPreviewUrl(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-            placeholder="Enter preview video URL"
-          />
-        </div>
-
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Select Video File *
-          </label>
-          <input
-            type="file"
-            onChange={handleFileChange}
-            accept="video/*"
-            disabled={isUploading}
-            className="block w-full text-sm text-gray-500
-              file:mr-4 file:py-2 file:px-4
-              file:rounded-md file:border-0
-              file:text-sm file:font-semibold
-              file:bg-blue-50 file:text-blue-700
-              hover:file:bg-blue-100
-              disabled:opacity-50"
-            required
-          />
-        </div>
-
-        {/* Video Preview and Thumbnail Section */}
-        {videoUrl && (
-          <div className="space-y-4">
-            <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
-              <video
-                ref={videoRef}
-                src={videoUrl}
-                className="w-full h-full"
-                controls
-                onTimeUpdate={handleTimeUpdate}
-              />
+    <div className="max-w-3xl mx-auto p-4">
+      <form className="space-y-6" onSubmit={(e) => e.preventDefault()}>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Title *
+            </label>
+            <input
+              type="text"
+              name="title"
+              value={formData.title}
+              onChange={handleFormChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+              required
+              disabled={isSubmitting}
+            />
+          </div>
+  
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Description
+            </label>
+            <textarea
+              name="description"
+              value={formData.description}
+              onChange={handleFormChange}
+              rows={4}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+              disabled={isSubmitting}
+            />
+          </div>
+  
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Price ($) *
+            </label>
+            <input
+              type="number"
+              name="price"
+              value={formData.price}
+              onChange={handleFormChange}
+              step="0.01"
+              min="0"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+              required
+              disabled={isSubmitting}
+            />
+          </div>
+  
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Preview URL
+            </label>
+            <input
+              type="url"
+              name="previewUrl"
+              value={formData.previewUrl}
+              onChange={handleFormChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder="Enter preview video URL"
+              disabled={isSubmitting}
+            />
+          </div>
+  
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Select Video File *
+            </label>
+            <input
+              type="file"
+              onChange={handleFileChange}
+              accept="video/*"
+              disabled={isUploading || isSubmitting}
+              className="block w-full text-sm text-gray-500
+                file:mr-4 file:py-2 file:px-4
+                file:rounded-md file:border-0
+                file:text-sm file:font-semibold
+                file:bg-blue-50 file:text-blue-700
+                hover:file:bg-blue-100
+                disabled:opacity-50"
+              required
+            />
+          </div>
+  
+          {videoUrl && (
+            <div className="space-y-4">
+              <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
+                <video
+                  ref={videoRef}
+                  src={videoUrl}
+                  className="w-full h-full"
+                  controls
+                  onTimeUpdate={handleTimeUpdate}
+                />
+              </div>
+              
+              <div className="flex flex-wrap items-center gap-4">
+                <button
+                  onClick={captureThumbnail}
+                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white rounded transition-colors"
+                  type="button"
+                  disabled={isSubmitting}
+                >
+                  Capture Thumbnail
+                </button>
+                <span className="text-sm text-gray-500">
+                  Current Time: {currentTime.toFixed(2)}s
+                </span>
+              </div>
+  
+              <canvas ref={canvasRef} className="hidden" />
+  
+              {thumbnail && (
+                <div className="mt-4">
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">Thumbnail Preview</h3>
+                  <div className="relative aspect-video w-64 bg-gray-100 rounded-lg overflow-hidden">
+                    <img
+                      src={thumbnail}
+                      alt="Video thumbnail"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
-            
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={captureThumbnail}
-                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded"
-                type="button"
-              >
-                Capture Thumbnail
-              </button>
-              <span className="text-sm text-gray-500">
-                Current Time: {currentTime.toFixed(2)}s
-              </span>
-            </div>
-
-            {/* Hidden canvas for thumbnail capture */}
-            <canvas ref={canvasRef} className="hidden" />
-
-            {/* Thumbnail Preview */}
-            {thumbnail && (
-              <div className="mt-4">
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Thumbnail Preview</h3>
-                <div className="relative aspect-video w-64 bg-gray-100 rounded-lg overflow-hidden">
-                  <img
-                    src={thumbnail}
-                    alt="Video thumbnail"
-                    className="w-full h-full object-cover"
-                  />
+          )}
+        </div>
+        
+        <div className="flex flex-wrap gap-3">
+          {file && !uploadUrl && (
+            <button
+              onClick={getUploadUrl}
+              disabled={isLoading || isSubmitting || !formData.title || !formData.price || !thumbnail}
+              className="px-4 py-2 rounded text-white transition-colors
+                disabled:bg-blue-300 disabled:cursor-not-allowed
+                enabled:bg-blue-500 enabled:hover:bg-blue-600"
+              type="button"
+            >
+              {isLoading ? 'Getting URL...' : 'Get Upload URL'}
+            </button>
+          )}
+  
+          {uploadUrl && !isUploading && uploadProgress < 100 && (
+            <button
+              onClick={uploadFile}
+              disabled={isSubmitting}
+              className="px-4 py-2 bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white rounded transition-colors"
+              type="button"
+            >
+              Upload File
+            </button>
+          )}
+        </div>
+  
+        {isUploading && (
+          <div className="mt-4">
+            <div className="relative pt-1">
+              <div className="flex mb-2 items-center justify-between">
+                <div>
+                  <span className="text-xs font-semibold inline-block text-blue-600">
+                    Upload Progress
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs font-semibold inline-block text-blue-600">
+                    {uploadProgress}%
+                  </span>
                 </div>
               </div>
-            )}
-          </div>
-        )}
-      </div>
-      
-      <div className="space-x-3 mt-6">
-        {file && !uploadUrl && (
-          <button
-            onClick={() => getUploadUrl(file.type)}
-            disabled={isLoading || !title || !price || !thumbnail}
-            className={`px-4 py-2 rounded text-white ${
-              isLoading || !title || !price || !thumbnail
-                ? 'bg-blue-300 cursor-not-allowed' 
-                : 'bg-blue-500 hover:bg-blue-600'
-            }`}
-          >
-            {isLoading ? 'Getting URL...' : 'Get Upload URL'}
-          </button>
-        )}
-
-        {uploadUrl && !isUploading && uploadProgress < 100 && (
-          <button
-            onClick={uploadFile}
-            className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded"
-          >
-            Upload File
-          </button>
-        )}
-      </div>
-
-      {isUploading && (
-        <div className="mt-4">
-          <div className="relative pt-1">
-            <div className="flex mb-2 items-center justify-between">
-              <div>
-                <span className="text-xs font-semibold inline-block text-blue-600">
-                  Upload Progress
-                </span>
-              </div>
-              <div className="text-right">
-                <span className="text-xs font-semibold inline-block text-blue-600">
-                  {uploadProgress}%
-                </span>
+              <div className="overflow-hidden h-2 mb-4 text-xs flex rounded bg-blue-200">
+                <div
+                  style={{ width: `${uploadProgress}%` }}
+                  className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-blue-500 transition-all duration-300"
+                />
               </div>
             </div>
-            <div className="overflow-hidden h-2 mb-4 text-xs flex rounded bg-blue-200">
-              <div
-                style={{ width: `${uploadProgress}%` }}
-                className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-blue-500 transition-all duration-300"
-              />
-            </div>
           </div>
-        </div>
-      )}
-
-      {uploadProgress === 100 && (
-        <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded">
-          <p className="text-green-600">Upload completed successfully!</p>
-        </div>
-      )}
-
-      {error && (
-        <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded">
-          <p className="text-red-600">{error}</p>
-        </div>
-      )}
+        )}
+  
+        {uploadProgress === 100 && (
+          <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded">
+            <p className="text-green-600">Upload completed successfully!</p>
+          </div>
+        )}
+  
+        {error && (
+          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded">
+            <p className="text-red-600">{error}</p>
+          </div>
+        )}
+      </form>
     </div>
   );
 }

@@ -24,6 +24,7 @@
   "license": "ISC",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.682.0",
+    "@aws-sdk/cloudfront-signer": "^3.679.0",
     "@aws-sdk/s3-presigned-post": "^3.682.0",
     "@aws-sdk/s3-request-presigner": "^3.682.0",
     "@types/aws-sdk": "^2.7.4",

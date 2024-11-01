@@ -1,4 +1,3 @@
-// server/src/app.ts
 import 'reflect-metadata';
 import express from "express";
 import dotenv from "dotenv";
@@ -13,7 +12,18 @@ import { Container } from "typedi";
 
 // Load environment variables early
 dotenv.config({ path: path.join(__dirname, '../.env') });
+const requiredEnvVars = [
+  'AWS_REGION',
+  'AWS_BUCKET_NAME',
+  'AWS_ACCESS_KEY_ID',
+  'AWS_SECRET_ACCESS_KEY'
+];
 
+const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
+if (missingEnvVars.length > 0) {
+  console.error('Missing required environment variables:', missingEnvVars);
+  process.exit(1);
+}
 // Log environment variables to verify they're loaded
 console.log('Environment loaded:', {
   aws: {
@@ -28,7 +38,7 @@ console.log('Environment loaded:', {
   }
 });
 
-// Initialize reflect-metadata
+// Initialize reflect-metadata and dependency injection
 useContainer(Container);
 
 const app = express();
@@ -43,21 +53,27 @@ app.use(security.cors);
 app.use(security.securityHeaders);
 app.use(security.sanitizeRequest);
 
-// Rate limiting
-app.use('/api/auth', security.rateLimits.auth);
-app.use('/api/videos/upload', security.rateLimits.upload);
-app.use('/api', security.rateLimits.api);
-
 // Trust proxy if behind reverse proxy
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
 }
 
-// Routes
-app.use("/api/auth", authRouter);
-app.use("/api/videos", videoRouter);
+// API Routes
+const apiRouter = express.Router();
 
-// Serve static files with security headers
+// Rate limiting for API routes
+apiRouter.use('/auth', security.rateLimits.auth);
+apiRouter.use('/videos/upload', security.rateLimits.upload);
+apiRouter.use('/', security.rateLimits.api);
+
+// Mount route handlers
+apiRouter.use("/auth", authRouter);
+apiRouter.use("/videos", videoRouter);
+
+// Mount all API routes under /api
+app.use("/api", apiRouter);
+
+// Static file serving with security headers
 app.use('/uploads', (req, res, next) => {
   res.setHeader('Cache-Control', 'no-store, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
@@ -65,7 +81,7 @@ app.use('/uploads', (req, res, next) => {
   next();
 }, express.static(path.join(__dirname, '../uploads')));
 
-// Health check endpoint with rate limit
+// Health check endpoint
 app.get('/health', security.rateLimits.api, (req, res) => {
   res.json({ 
     status: 'ok', 
@@ -89,19 +105,23 @@ app.use((_req, res) => {
 });
 
 // Database connection and server start
-AppDataSource.initialize()
-  .then(() => {
+async function startServer() {
+  try {
+    await AppDataSource.initialize();
     console.log("Database connected");
     
     const PORT = process.env.PORT || 3001;
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
     });
-  })
-  .catch((error) => console.log("TypeORM initialization error: ", error));
+  } catch (error) {
+    console.error("Server initialization error:", error);
+    process.exit(1);
+  }
+}
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
+// Graceful shutdown handler
+function handleGracefulShutdown() {
   console.log('SIGTERM received. Shutting down gracefully...');
   AppDataSource.destroy()
     .then(() => {
@@ -112,6 +132,13 @@ process.on('SIGTERM', () => {
       console.error('Error during shutdown:', err);
       process.exit(1);
     });
-});
+}
+
+// Initialize server
+startServer();
+
+// Register shutdown handlers
+process.on('SIGTERM', handleGracefulShutdown);
+process.on('SIGINT', handleGracefulShutdown);
 
 export default app;

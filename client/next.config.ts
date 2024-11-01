@@ -17,10 +17,16 @@ const nextConfig = {
     NEXT_PUBLIC_ENABLE_STRIPE: process.env.NEXT_PUBLIC_ENABLE_STRIPE,
     NEXT_PUBLIC_ANALYTICS_ID: process.env.NEXT_PUBLIC_ANALYTICS_ID,
     NEXT_PUBLIC_MOCK_API: process.env.NEXT_PUBLIC_MOCK_API,
-    NEXT_PUBLIC_DEBUG_MODE: process.env.NEXT_PUBLIC_DEBUG_MODE
+    NEXT_PUBLIC_DEBUG_MODE: process.env.NEXT_PUBLIC_DEBUG_MODE,
+    NEXT_PUBLIC_CLOUDFLARE_ACCOUNT_ID: process.env.NEXT_PUBLIC_CLOUDFLARE_ACCOUNT_ID,
+    NEXT_PUBLIC_CLOUDFLARE_STREAM_TOKEN: process.env.NEXT_PUBLIC_CLOUDFLARE_STREAM_TOKEN
   },
   images: {
-    domains: ['kevinklatman.s3.amazonaws.com']
+    domains: [
+      'kevinklatman.s3.amazonaws.com',
+      'videodelivery.net', // Cloudflare Stream domain
+      'cloudflarestream.com' // Cloudflare Stream thumbnails
+    ]
   }
 }
 

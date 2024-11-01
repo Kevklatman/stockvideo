@@ -149,7 +149,33 @@ export class VideoController {
       next(error);
     }
   }
+// In VideoController
+static async getVideoUrls(req: Request, res: Response) {
+  try {
+    const { videoId } = req.params;
+    const video = await VideoService.getVideo(videoId);
 
+    if (!video) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Video not found'
+      });
+    }
+
+    return res.json({
+      status: 'success',
+      data: {
+        fullVideoUrl: video.fullVideoUrl,
+        previewUrl: video.previewUrl
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to fetch video URLs'
+    });
+  }
+}
   /**
    * Download video
    */

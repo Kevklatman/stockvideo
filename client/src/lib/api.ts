@@ -45,6 +45,17 @@ export interface UploadProgressEvent {
   total: number;
 }
 
+export interface PresignedUploadData {
+  url: string;
+  fields: Record<string, string>;
+}
+
+export interface VideoUrls {
+  streamingUrl: string;
+  thumbnailUrl: string;
+  previewUrl: string;
+}
+
 interface FetchOptions extends Omit<RequestInit, 'body'> {
   headers?: Record<string, string>;
   skipAuth?: boolean;
@@ -201,9 +212,8 @@ export async function fetchApi<T>(
         }
       }
 
-      // Use normalized URL
       const url = normalizeUrl(API_URL, endpoint);
-      console.log('Making request to:', url); // Debug log
+      console.log('Making request to:', url);
 
       const body = options.body instanceof FormData
         ? options.body
@@ -320,4 +330,80 @@ export const api = {
 
   delete: <T>(endpoint: string, options: Omit<FetchOptions, 'body' | 'method'> = {}) => 
     fetchApi<T>(endpoint, { ...options, method: 'DELETE' }),
+
+  videos: {
+    // Get upload URL for direct S3 upload
+    getUploadUrl: (fileType: string) =>
+      api.post<PresignedUploadData>('/videos/upload-url', { fileType }),
+
+    // Upload file directly to S3 using presigned URL
+    uploadToS3: async (
+      presignedData: PresignedUploadData,
+      file: File,
+      onProgress?: (event: UploadProgressEvent) => void
+    ): Promise<void> => {
+      const formData = new FormData();
+      
+      Object.entries(presignedData.fields).forEach(([key, value]) => {
+        formData.append(key, value);
+      });
+      
+      formData.append('file', file);
+
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+
+        if (onProgress) {
+          xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+              onProgress({
+                loaded: event.loaded,
+                total: event.total
+              });
+            }
+          };
+        }
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            reject(new Error(`Upload failed with status ${xhr.status}`));
+          }
+        };
+
+        xhr.onerror = () => {
+          reject(new Error('Upload failed'));
+        };
+
+        xhr.open('POST', presignedData.url);
+        xhr.send(formData);
+      });
+    },
+
+    // Get video URLs (streaming and thumbnail)
+    getUrls: (videoId: string) =>
+      api.get<VideoUrls>(`/videos/${videoId}/urls`),
+
+    // Upload video with progress tracking
+    upload: async (
+      file: File,
+      onProgress?: (event: UploadProgressEvent) => void
+    ): Promise<string> => {
+      const presignedData = await api.videos.getUploadUrl(file.type);
+      await api.videos.uploadToS3(presignedData, file, onProgress);
+      
+      const response = await api.post<{ id: string }>('/videos', {
+        filename: file.name,
+        fileType: file.type,
+        fileSize: file.size
+      });
+
+      return response.id;
+    },
+
+    // Delete video
+    delete: (videoId: string) =>
+      api.delete(`/videos/${videoId}`),
+  }
 };
