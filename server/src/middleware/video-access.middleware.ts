@@ -7,6 +7,7 @@ import {
   VideoResponseLocals,
   AuthenticatedVideoRequest 
 } from "../types";
+import { VideoService } from "../services/video.service";
 
 export class VideoAccessMiddleware {
   /**
@@ -50,54 +51,72 @@ export class VideoAccessMiddleware {
   /**
    * Middleware for accessing full video content
    */
-  static fullVideoAccess: RequestHandler<
-    VideoRequestParams,
-    any,
-    any,
-    StreamQueryParams,
-    VideoResponseLocals
-  > = async (req, res, next): Promise<void> => {
-    try {
-      const { videoId } = req.params;
-      const userId = (req as AuthenticatedVideoRequest).user?.id;
+static fullVideoAccess: RequestHandler<
+  VideoRequestParams,
+  any,
+  any,
+  StreamQueryParams,
+  VideoResponseLocals
+> = async (req, res, next): Promise<void> => {
+  try {
+    const { videoId } = req.params;
+    const userId = (req as AuthenticatedVideoRequest).user?.id;
 
-      if (!videoId) {
-        res.status(400).json({ 
-          message: "Video ID is required" 
-        });
-        return;
-      }
+    if (!videoId) {
+      res.status(400).json({ 
+        message: "Video ID is required" 
+      });
+      return;
+    }
 
-      if (!userId) {
-        res.status(401).json({ 
-          message: "Authentication required" 
-        });
-        return;
-      }
+    if (!userId) {
+      res.status(401).json({ 
+        message: "Authentication required" 
+      });
+      return;
+    }
 
+    // Check if user is the owner
+    const isOwner = await VideoAccessService.isVideoOwner(videoId, userId);
+    
+    if (isOwner) {
+      // If owner, bypass purchase check
       const streamingToken = await VideoAccessService.getStreamingToken(videoId, userId);
-      
-      if (!streamingToken) {
+      if (streamingToken) {
+        res.locals.streamingToken = streamingToken;
+        next();
+      } else {
         res.status(403).json({ 
           message: "Video not purchased or access denied" 
         });
-        return;
       }
-
-      res.locals.streamingToken = streamingToken;
-      next();
-    } catch (error) {
-      if (error instanceof VideoAccessError && error.message === 'Rate limit exceeded') {
-        res.status(429).json({ 
-          message: "Too many requests. Please try again later." 
-        });
-        return;
-      }
-      res.status(500).json({ 
-        message: "Error accessing video content" 
-      });
+      return;
     }
-  };
+
+    // If not owner, check for purchase
+    const streamingToken = await VideoAccessService.getStreamingToken(videoId, userId);
+    
+    if (!streamingToken) {
+      res.status(403).json({ 
+        message: "Video not purchased or access denied" 
+      });
+      return;
+    }
+
+    res.locals.streamingToken = streamingToken;
+    next();
+  } catch (error) {
+    if (error instanceof VideoAccessError && error.message === 'Rate limit exceeded') {
+      res.status(429).json({ 
+        message: "Too many requests. Please try again later." 
+      });
+      return;
+    }
+    res.status(500).json({ 
+      message: "Error accessing video content" 
+    });
+  }
+};
 
   /**
    * Middleware for downloading videos
@@ -169,7 +188,7 @@ export class VideoAccessMiddleware {
       return;
     }
 
-    const isOwner = await VideoAccessService.isVideoOwner(videoId, userId);
+    const isOwner = await VideoService.isVideoOwner(videoId, userId);
     
     if (isOwner) {
       res.locals.hasFullAccess = true;

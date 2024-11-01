@@ -201,7 +201,22 @@ static async getVideo(videoId: string, includePrivate = false): Promise<Video | 
     throw error;
   }
 }
-
+// In VideoService
+static async isVideoOwner(videoId: string, userId: string): Promise<boolean> {
+  try {
+    const video = await this.videoRepository.findOne({
+      where: { 
+        id: videoId,
+        userId: userId
+      }
+    });
+    
+    return !!video;
+  } catch (error) {
+    console.error('Error checking video ownership:', error);
+    return false;
+  }
+}
   // Removed duplicate getUserVideos method
 
   /**
