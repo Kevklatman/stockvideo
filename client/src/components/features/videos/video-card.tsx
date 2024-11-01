@@ -1,107 +1,69 @@
 // src/components/features/videos/video-card.tsx
-import Link from 'next/link';
-import { Play, User, Heart } from 'lucide-react';
+'use client';
+
 import { useState } from 'react';
 
 interface VideoCardProps {
   id: string;
   title: string;
-  description: string;
-  price: number;
-  thumbnailUrl?: string;
-  duration?: string;
-  author: {
-    name: string;
-    avatarUrl?: string;
-  };
-  views?: number;
+  thumbnailUrl: string;
+  videoUrl: string;
+  authorName: string;
+  likes: number;
+  duration: number;
+  views: number;
 }
 
 export function VideoCard({
-  id,
   title,
-  description,
-  price,
-  thumbnailUrl = 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7',
-  duration = "3:45",
-  author,
-  views = 1234
+  thumbnailUrl,
+  videoUrl,
+  authorName,
+  likes,
+  views,
 }: VideoCardProps) {
-  const [isLiked, setIsLiked] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   return (
-    <div className="group relative bg-white rounded-2xl overflow-hidden transform transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_8px_30px_rgb(0,0,0,0.12)]">
-      <Link href={`/videos/${id}`}>
-        <div className="relative aspect-[16/9] overflow-hidden bg-gray-100">
-          <img
-            src={thumbnailUrl}
-            alt={title}
-            className="object-cover w-full h-full transform transition-transform duration-700 group-hover:scale-105"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/0 to-black/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-          
-          {/* Premium Badge */}
-          {price > 50 && (
-            <div className="absolute top-3 left-3 px-2 py-1 bg-gradient-to-r from-amber-500 to-yellow-500 rounded-full">
-              <span className="text-xs font-semibold text-white tracking-wide">PREMIUM</span>
-            </div>
-          )}
-          
-          {/* Duration Badge */}
-          <div className="absolute bottom-3 right-3 px-2 py-1 bg-black/70 backdrop-blur-md rounded-md">
-            <span className="text-xs font-medium text-white">{duration}</span>
-          </div>
-
-          {/* Play Button Overlay */}
-          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-            <div className="w-16 h-16 flex items-center justify-center rounded-full bg-white/25 backdrop-blur-sm border border-white/50">
-              <Play className="w-8 h-8 text-white fill-white" />
-            </div>
-          </div>
-        </div>
-      </Link>
-
-      <div className="p-5">
-        <div className="flex items-start justify-between gap-2">
-          <Link href={`/videos/${id}`}>
-            <h3 className="text-lg font-semibold text-gray-900 line-clamp-1 group-hover:text-blue-600 transition-colors duration-200">
-              {title}
-            </h3>
-          </Link>
-          <button 
-            onClick={() => setIsLiked(!isLiked)}
-            className="flex-shrink-0 p-2 hover:bg-gray-100 rounded-full transition-colors duration-200"
+    <div className="rounded-lg overflow-hidden shadow-lg">
+      <div className="relative aspect-video">
+        {isPlaying ? (
+          <video
+            className="w-full h-full object-cover"
+            controls
+            autoPlay
+            src={videoUrl}
           >
-            <Heart 
-              className={`w-5 h-5 ${isLiked ? 'fill-red-500 text-red-500' : 'text-gray-400'}`}
+            Your browser does not support the video tag.
+          </video>
+        ) : (
+          <div onClick={() => setIsPlaying(true)} className="cursor-pointer">
+            <img
+              src={thumbnailUrl}
+              alt={title}
+              className="w-full h-full object-cover"
             />
-          </button>
-        </div>
-
-        <p className="mt-2 text-sm text-gray-500 line-clamp-2">{description}</p>
-
-        <div className="mt-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden">
-              {author.avatarUrl ? (
-                <img 
-                  src={author.avatarUrl} 
-                  alt={author.name}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <User className="w-full h-full p-1.5 text-gray-400" />
-              )}
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-900">{author.name}</p>
-              <p className="text-xs text-gray-500">{views.toLocaleString()} views</p>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="bg-black bg-opacity-50 rounded-full p-4">
+                <svg
+                  className="w-8 h-8 text-white"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                </svg>
+              </div>
             </div>
           </div>
-          
-          <div className="flex items-center">
-            <span className="text-lg font-bold text-blue-600">${price.toFixed(2)}</span>
-          </div>
+        )}
+      </div>
+      <div className="p-4">
+        <h3 className="font-semibold text-lg mb-2">{title}</h3>
+        <p className="text-gray-600">{authorName}</p>
+        <div className="flex items-center text-sm text-gray-500 mt-2">
+          <span>{views} views</span>
+          <span className="mx-2">•</span>
+          <span>{likes} likes</span>
         </div>
       </div>
     </div>

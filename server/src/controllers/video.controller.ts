@@ -97,7 +97,21 @@ static async getUploadUrl(req: Request, res: Response) {
       next(error);
     }
   }
+// In VideoController class in video.controller.ts
 
+static async getAllVideos(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    // Get all videos from service
+    const videos = await VideoService.findAll();
+
+    res.json({
+      status: 'success',
+      data: videos
+    });
+  } catch (error) {
+    next(error);
+  }
+}
   /**
    * Stream full video
    */

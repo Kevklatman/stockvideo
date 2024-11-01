@@ -19,7 +19,11 @@ router.get(
   ...VideoAccessMiddleware.middlewareChain.preview,
   VideoController.streamPreview
 );
-
+// Get all videos
+router.get(
+  '/',
+  VideoController.getAllVideos
+);
 // Protected routes
 router.use(authMiddleware);
 

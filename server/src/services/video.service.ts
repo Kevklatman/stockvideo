@@ -478,6 +478,31 @@ static async getUserVideos(
   }
 }
 
+// In VideoService class in video.service.ts
+
+static async findAll(): Promise<Video[]> {
+  try {
+    // Create query builder
+    const queryBuilder = this.videoRepository
+      .createQueryBuilder('video')
+      .leftJoinAndSelect('video.user', 'user')
+      .select([
+        'video',
+        'user.id',
+        'user.email',
+        'user.role'
+      ]);
+
+    // Execute query
+    const videos = await queryBuilder.getMany();
+
+    return videos;
+  } catch (error) {
+    console.error('Error finding videos:', error);
+    throw new Error('Failed to fetch videos');
+  }
+}
+
 // Removed duplicate searchVideos method
 }
 
