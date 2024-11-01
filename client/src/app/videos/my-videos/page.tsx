@@ -157,11 +157,11 @@ export default function MyVideosPage() {
     )}
     <VideoPlayer
       videoId={video.id}
-      url={video.fullVideoUrl}
+      url={video.fullVideoUrl} // Make sure this URL is correct from the API
       thumbnailUrl={video.previewUrl}
-      isPurchased={true} // Since these are user's own videos
-      previewMode={false} // User owns these videos, so no preview mode
-      onPurchaseClick={() => {}} // Not needed for owned videos
+      isPurchased={true}
+      previewMode={false}
+      onPurchaseClick={() => {}}
     />
     <div className="mt-4">
       <h3 className="text-lg font-medium text-gray-900">{video.title}</h3>
