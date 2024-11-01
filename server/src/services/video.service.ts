@@ -488,6 +488,7 @@ static async findAll(): Promise<Video[]> {
       .leftJoinAndSelect('video.user', 'user')
       .select([
         'video',
+        'video.fullVideoUrl',
         'user.id',
         'user.email',
         'user.role'

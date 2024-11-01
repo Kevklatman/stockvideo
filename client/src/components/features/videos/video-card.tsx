@@ -12,6 +12,9 @@ interface VideoCardProps {
   likes: number;
   duration: number;
   views: number;
+  price: string;
+  description: string;
+  createdAt: Date;
 }
 
 export function VideoCard({
@@ -19,30 +22,47 @@ export function VideoCard({
   thumbnailUrl,
   videoUrl,
   authorName,
-  likes,
-  views,
+  price,
+  description,
+  createdAt,
 }: VideoCardProps) {
   const [isPlaying, setIsPlaying] = useState(false);
 
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
   return (
-    <div className="rounded-lg overflow-hidden shadow-lg">
-      <div className="relative aspect-video">
+    <div className="rounded-lg overflow-hidden shadow-lg bg-white">
+      <div className="relative aspect-video bg-gray-100">
         {isPlaying ? (
           <video
             className="w-full h-full object-cover"
             controls
-            autoPlay
             src={videoUrl}
           >
             Your browser does not support the video tag.
           </video>
         ) : (
-          <div onClick={() => setIsPlaying(true)} className="cursor-pointer">
-            <img
-              src={thumbnailUrl}
-              alt={title}
-              className="w-full h-full object-cover"
-            />
+          <div 
+            onClick={() => setIsPlaying(true)} 
+            className="cursor-pointer w-full h-full relative"
+          >
+            {thumbnailUrl ? (
+              <img
+                src={thumbnailUrl}
+                alt={title}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-gray-200">
+                <span className="text-gray-400">Click to play video</span>
+              </div>
+            )}
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="bg-black bg-opacity-50 rounded-full p-4">
                 <svg
@@ -59,11 +79,13 @@ export function VideoCard({
       </div>
       <div className="p-4">
         <h3 className="font-semibold text-lg mb-2">{title}</h3>
-        <p className="text-gray-600">{authorName}</p>
-        <div className="flex items-center text-sm text-gray-500 mt-2">
-          <span>{views} views</span>
-          <span className="mx-2">•</span>
-          <span>{likes} likes</span>
+        <p className="text-gray-600 text-sm mb-2">{description}</p>
+        <div className="flex items-center justify-between text-sm text-gray-500">
+          <span>{authorName}</span>
+          <span>${price}</span>
+        </div>
+        <div className="text-xs text-gray-400 mt-2">
+          {formatDate(createdAt)}
         </div>
       </div>
     </div>
