@@ -25,57 +25,53 @@ export class VideoController {
     },
   });
 
-  static async getUploadUrl(
-    req: AuthRequest,
-    res: Response,
-    next: NextFunction
-  ): Promise<void> {
-    try {
-      if (!req.user?.id) {
-        res.status(401).json({
-          status: 'error',
-          code: 'UNAUTHORIZED',
-          message: "Authentication required"
-        });
-        return;
-      }
+// src/controllers/upload.controller.ts
+// src/controllers/upload.controller.ts
+static async getUploadUrl(req: Request, res: Response) {
+  try {
+    const { contentType } = req.body;
 
-      const { contentType } = req.body;
-
-      if (!contentType) {
-        res.status(400).json({
-          status: 'error',
-          code: 'VALIDATION_ERROR',
-          message: "Content type is required"
-        });
-        return;
-      }
-
-      const videoId = crypto.randomUUID();
-      const key = `videos/${req.user.id}/${videoId}/${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
-
-      const command = new PutObjectCommand({
-        Bucket: process.env.AWS_BUCKET_NAME!,
-        Key: key,
-        ContentType: contentType,
+    if (!contentType) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Content type is required'
       });
-
-      const url = await getSignedUrl(VideoController.s3Client, command, {
-        expiresIn: 3600,
-      });
-
-      res.json({
-        status: 'success',
-        data: {
-          url,
-          videoId,
-          key,
-        }
-      });
-    } catch (error) {
-      next(error);
     }
+
+    const videoId = crypto.randomUUID();
+    const key = `videos/${videoId}`;
+
+    // Generate the signed URL
+    const command = new PutObjectCommand({
+      Bucket: process.env.AWS_BUCKET_NAME!,
+      Key: key,
+      ContentType: contentType,
+      Metadata: {
+        uploadedAt: new Date().toISOString()
+      }
+    });
+
+    const url = await getSignedUrl(VideoController.s3Client, command, { 
+      expiresIn: 3600 
+    });
+
+    // Return response wrapped in data property
+    res.json({
+      status: 'success',
+      data: {
+        url,
+        videoId,
+        key
+      }
+    });
+  } catch (error) {
+    console.error('Upload URL generation error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to generate upload URL'
+    });
   }
+}
   /**
    * Stream video preview
    */

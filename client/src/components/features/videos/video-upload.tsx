@@ -8,10 +8,7 @@ interface UploadUrlResponse {
   key: string;
 }
 
-interface ApiResponse<T> {
-  status: 'success';
-  data: T;
-}
+
 
 export default function VideoUpload() {
   const { user } = useAuth();
@@ -141,26 +138,21 @@ export default function VideoUpload() {
         videoKey
       });
   
-      const token = localStorage.getItem('auth_token');
-      const response = await api.post<ApiResponse<UploadUrlResponse>>('/api/videos/upload-url', {
+      const response = await api.post<UploadUrlResponse>('/api/videos/upload-url', {
         contentType: file.type,
         fileSize: file.size,
         videoKey
-      }, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
       });
   
       console.log('Upload URL response:', response);
   
-      if (!response.data?.url) {
-        throw new Error('No upload URL received');
+      // The response is already the data we need, no need to access .data
+      if (!response.url) {
+        throw new Error('Invalid response format: missing URL');
       }
   
-      setUploadUrl(response.data.url);
-      setVideoKey(response.data.key);
+      setUploadUrl(response.url);
+      setVideoKey(response.key);
   
     } catch (error) {
       console.error('Error getting upload URL:', error);
@@ -169,10 +161,12 @@ export default function VideoUpload() {
       setIsLoading(false);
     }
   }, [user, file, videoKey, validateForm]);
-
   const uploadFile = useCallback(async () => {
-    if (!file || !uploadUrl || !videoKey) return;
-
+    if (!file || !uploadUrl || !videoKey) {
+      console.error('Missing required upload data:', { file: !!file, uploadUrl: !!uploadUrl, videoKey: !!videoKey });
+      return;
+    }
+  
     setIsUploading(true);
     setError(null);
     setIsSubmitting(true);
@@ -186,7 +180,7 @@ export default function VideoUpload() {
           setUploadProgress(progress);
         }
       };
-
+  
       await new Promise((resolve, reject) => {
         xhr.open('PUT', uploadUrl);
         xhr.setRequestHeader('Content-Type', file.type);
@@ -210,12 +204,15 @@ export default function VideoUpload() {
                   videoKey: videoKey
                 })
               });
-
+  
               if (!response.ok) {
-                throw new Error('Failed to create video record');
+                throw new Error(`Failed to create video record: ${response.statusText}`);
               }
-
-              resolve(xhr.response);
+  
+              const data = await response.json();
+              console.log('Video record created:', data);
+  
+              resolve(data);
             } catch (error) {
               reject(error);
             }
@@ -224,15 +221,23 @@ export default function VideoUpload() {
           }
         };
         
-        xhr.onerror = () => reject(new Error('Upload failed'));
+        xhr.onerror = () => {
+          console.error('XHR Error:', xhr.statusText);
+          reject(new Error('Upload failed'));
+        };
         xhr.onabort = () => reject(new Error('Upload aborted'));
         
+        console.log('Sending file:', { 
+          size: file.size, 
+          type: file.type, 
+          url: uploadUrl 
+        });
         xhr.send(file);
       });
-
+  
       setUploadProgress(100);
       resetForm();
-
+  
     } catch (error) {
       console.error('Error uploading file:', error);
       setError(error instanceof Error ? error.message : 'Failed to upload file');
@@ -242,10 +247,6 @@ export default function VideoUpload() {
       setIsSubmitting(false);
     }
   }, [file, uploadUrl, videoKey, formData, thumbnail, resetForm]);
-
-  if (!user) {
-    return <div className="p-4 text-red-500">Please log in to upload videos</div>;
-  }
   
   return (
     <div className="max-w-3xl mx-auto p-4">
