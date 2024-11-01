@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '@/providers/auth-provider';
 
-
 export default function VideoUpload() {
   const { user } = useAuth();
   const [file, setFile] = useState<File | null>(null);
@@ -10,6 +9,12 @@ export default function VideoUpload() {
   const [isLoading, setIsLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [isUploading, setIsUploading] = useState(false);
+
+  // New form data states
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [price, setPrice] = useState<string>('');
+  const [previewUrl, setPreviewUrl] = useState('');
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
@@ -25,9 +30,25 @@ export default function VideoUpload() {
     }
   };
 
+  const validateForm = () => {
+    if (!title.trim()) {
+      setError('Title is required');
+      return false;
+    }
+    if (!price || parseFloat(price) < 0) {
+      setError('Valid price is required');
+      return false;
+    }
+    return true;
+  };
+
   const getUploadUrl = async (contentType: string) => {
     if (!user) {
       setError('Not authenticated');
+      return;
+    }
+
+    if (!validateForm()) {
       return;
     }
 
@@ -45,7 +66,11 @@ export default function VideoUpload() {
         body: JSON.stringify({
           filename: file?.name,
           contentType: contentType,
-          fileSize: file?.size
+          fileSize: file?.size,
+          title,
+          description,
+          price: parseFloat(price),
+          previewUrl
         })
       });
 
@@ -89,9 +114,34 @@ export default function VideoUpload() {
         xhr.open('PUT', uploadUrl);
         xhr.setRequestHeader('Content-Type', file.type);
         
-        xhr.onload = () => {
+        xhr.onload = async () => {
           if (xhr.status >= 200 && xhr.status < 300) {
-            resolve(xhr.response);
+            try {
+              // After successful upload, create the video record
+              const token = localStorage.getItem('auth_token');
+              const response = await fetch('/api/videos', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                  title,
+                  description,
+                  price: parseFloat(price),
+                  previewUrl,
+                  fullVideoUrl: uploadUrl // or get the final URL from the server response
+                })
+              });
+
+              if (!response.ok) {
+                throw new Error('Failed to create video record');
+              }
+
+              resolve(xhr.response);
+            } catch (error) {
+              reject(error);
+            }
           } else {
             reject(new Error(`Upload failed with status: ${xhr.status}`));
           }
@@ -105,6 +155,14 @@ export default function VideoUpload() {
 
       setUploadProgress(100);
       setError(null);
+
+      // Reset form after successful upload
+      setTitle('');
+      setDescription('');
+      setPrice('');
+      setPreviewUrl('');
+      setFile(null);
+      setUploadUrl(null);
 
     } catch (error) {
       console.error('Error uploading file:', error);
@@ -121,32 +179,88 @@ export default function VideoUpload() {
 
   return (
     <div className="p-4">
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Select Video File
-        </label>
-        <input
-          type="file"
-          onChange={handleFileChange}
-          accept="video/*"
-          disabled={isUploading}
-          className="block w-full text-sm text-gray-500
-            file:mr-4 file:py-2 file:px-4
-            file:rounded-md file:border-0
-            file:text-sm file:font-semibold
-            file:bg-blue-50 file:text-blue-700
-            hover:file:bg-blue-100
-            disabled:opacity-50"
-        />
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Title *
+          </label>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+            required
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Description
+          </label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={4}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Price ($) *
+          </label>
+          <input
+            type="number"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            step="0.01"
+            min="0"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+            required
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Preview URL
+          </label>
+          <input
+            type="url"
+            value={previewUrl}
+            onChange={(e) => setPreviewUrl(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+            placeholder="Enter preview video URL"
+          />
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Select Video File *
+          </label>
+          <input
+            type="file"
+            onChange={handleFileChange}
+            accept="video/*"
+            disabled={isUploading}
+            className="block w-full text-sm text-gray-500
+              file:mr-4 file:py-2 file:px-4
+              file:rounded-md file:border-0
+              file:text-sm file:font-semibold
+              file:bg-blue-50 file:text-blue-700
+              hover:file:bg-blue-100
+              disabled:opacity-50"
+            required
+          />
+        </div>
       </div>
       
-      <div className="space-x-3">
+      <div className="space-x-3 mt-6">
         {file && !uploadUrl && (
           <button
             onClick={() => getUploadUrl(file.type)}
-            disabled={isLoading}
+            disabled={isLoading || !title || !price}
             className={`px-4 py-2 rounded text-white ${
-              isLoading 
+              isLoading || !title || !price
                 ? 'bg-blue-300 cursor-not-allowed' 
                 : 'bg-blue-500 hover:bg-blue-600'
             }`}
