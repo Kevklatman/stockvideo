@@ -4,11 +4,28 @@
 import { useEffect, useState } from 'react';
 import { VideoCard } from '@/components/features/videos/video-card';
 
+interface ApiVideo {
+  id: string;
+  title: string;
+  description: string;
+  fullVideoUrl: string;
+  previewUrl: string;
+  price: string;
+  createdAt: string;
+  updatedAt: string;
+  userId: string;
+  user: {
+    email: string;
+    id: string;
+    role: string;
+  };
+}
+
 interface Video {
   id: string;
   title: string;
   thumbnailUrl: string;
-  videoUrl: string; // Add this field
+  videoUrl: string;
   authorName: string;
   _id?: string;
   author?: {
@@ -39,15 +56,21 @@ export default function VideosPage() {
           ? data 
           : data.videos || data.data || [];
 
-        const transformedVideos = videoArray.map((video: Partial<Video>) => ({
-          id: video.id || video._id,
-          title: video.title || '',
-          thumbnailUrl: video.thumbnailUrl || '',
-          videoUrl: video.videoUrl || '', // Include video URL
-          authorName: video.authorName || video.author?.name || 'Unknown Author',
-          likes: video.likes || 0,
-          duration: video.duration || 0,
-          views: video.views || 0,
+        const transformedVideos = videoArray.map((video: ApiVideo) => ({
+          id: video.id,
+          title: video.title,
+          thumbnailUrl: video.previewUrl || '',
+          videoUrl: video.fullVideoUrl,
+          authorName: video.user.email.split('@')[0], // Using email username as author name
+          author: {
+            name: video.user.email.split('@')[0]
+          },
+          likes: 0, // Default values since these aren't in the API
+          duration: 0,
+          views: 0,
+          price: video.price,
+          description: video.description,
+          createdAt: new Date(video.createdAt),
         }));
 
         setVideos(transformedVideos);
@@ -82,7 +105,7 @@ export default function VideosPage() {
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-8">Videos</h1>
       
-      {Array.isArray(videos) && videos.length > 0 ? (
+      {videos.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {videos.map((video) => (
             <VideoCard
@@ -90,11 +113,15 @@ export default function VideosPage() {
               id={video.id}
               title={video.title}
               thumbnailUrl={video.thumbnailUrl}
-              videoUrl={video.videoUrl} // Pass video URL to VideoCard
+              videoUrl={video.videoUrl}
               authorName={video.authorName}
               likes={video.likes}
               duration={video.duration}
               views={video.views}
+              price={video.price}
+              description={video.description}
+              createdAt={video.createdAt}
+
             />
           ))}
         </div>
