@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useAuth } from '@/providers/auth-provider';
 
 export default function VideoUpload() {
@@ -9,12 +9,17 @@ export default function VideoUpload() {
   const [isLoading, setIsLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [isUploading, setIsUploading] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // New form data states
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState<string>('');
   const [previewUrl, setPreviewUrl] = useState('');
+  const [thumbnail, setThumbnail] = useState<string | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState(0);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
@@ -27,6 +32,36 @@ export default function VideoUpload() {
       setError(null);
       setUploadUrl(null);
       setUploadProgress(0);
+
+      // Create URL for video preview
+      const url = URL.createObjectURL(selectedFile);
+      setVideoUrl(url);
+      setThumbnail(null); // Reset thumbnail when new video is selected
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    if (videoRef.current) {
+      setCurrentTime(videoRef.current.currentTime);
+    }
+  };
+
+  const captureThumbnail = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const context = canvas.getContext('2d');
+
+      // Set canvas dimensions to match video
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      // Draw the current video frame
+      context?.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // Convert to base64
+      const thumbnailUrl = canvas.toDataURL('image/jpeg');
+      setThumbnail(thumbnailUrl);
     }
   };
 
@@ -37,6 +72,10 @@ export default function VideoUpload() {
     }
     if (!price || parseFloat(price) < 0) {
       setError('Valid price is required');
+      return false;
+    }
+    if (!thumbnail) {
+      setError('Please capture a thumbnail before uploading');
       return false;
     }
     return true;
@@ -180,6 +219,7 @@ export default function VideoUpload() {
   return (
     <div className="p-4">
       <div className="space-y-4">
+        {/* Previous form fields remain the same */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Title *
@@ -252,15 +292,60 @@ export default function VideoUpload() {
             required
           />
         </div>
+
+        {/* Video Preview and Thumbnail Section */}
+        {videoUrl && (
+          <div className="space-y-4">
+            <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
+              <video
+                ref={videoRef}
+                src={videoUrl}
+                className="w-full h-full"
+                controls
+                onTimeUpdate={handleTimeUpdate}
+              />
+            </div>
+            
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={captureThumbnail}
+                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded"
+                type="button"
+              >
+                Capture Thumbnail
+              </button>
+              <span className="text-sm text-gray-500">
+                Current Time: {currentTime.toFixed(2)}s
+              </span>
+            </div>
+
+            {/* Hidden canvas for thumbnail capture */}
+            <canvas ref={canvasRef} className="hidden" />
+
+            {/* Thumbnail Preview */}
+            {thumbnail && (
+              <div className="mt-4">
+                <h3 className="text-sm font-medium text-gray-700 mb-2">Thumbnail Preview</h3>
+                <div className="relative aspect-video w-64 bg-gray-100 rounded-lg overflow-hidden">
+                  <img
+                    src={thumbnail}
+                    alt="Video thumbnail"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       
       <div className="space-x-3 mt-6">
         {file && !uploadUrl && (
           <button
             onClick={() => getUploadUrl(file.type)}
-            disabled={isLoading || !title || !price}
+            disabled={isLoading || !title || !price || !thumbnail}
             className={`px-4 py-2 rounded text-white ${
-              isLoading || !title || !price
+              isLoading || !title || !price || !thumbnail
                 ? 'bg-blue-300 cursor-not-allowed' 
                 : 'bg-blue-500 hover:bg-blue-600'
             }`}
