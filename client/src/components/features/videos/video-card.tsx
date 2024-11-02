@@ -95,26 +95,25 @@ export function VideoCard({
           if (!isPlaying) setShowControls(false);
         }}
       >
-        <video
-          ref={videoRef}
-          className="w-full h-full object-cover"
-          controls={showControls}
-          src={videoUrl}
-          poster={thumbnailUrl}
-          preload="metadata"
-          onEnded={handleVideoEnd}
-          onPause={handleVideoPause}
-          onError={(e) => {
-            console.error('Video error:', e);
-            setPlaybackError('Error playing video');
-          }}
-          onPlay={() => {
-            setIsPlaying(true);
-            setShowControls(true);
-          }}
-        >
-          Your browser does not support the video tag.
-        </video>
+      <video
+        ref={videoRef}
+        className="w-full h-full object-cover"
+        controls={showControls}
+        src={videoUrl}
+        poster={thumbnailUrl}
+        preload="metadata"
+        onEnded={handleVideoEnd}
+        onPause={handleVideoPause}
+        onError={() => {
+          setPlaybackError('Error playing video');
+        }}
+        onPlay={() => {
+          setIsPlaying(true);
+          setShowControls(true);
+        }}
+      >
+        Your browser does not support the video tag.
+      </video>
 
         {(!isPlaying || !showControls) && (
           <div 
