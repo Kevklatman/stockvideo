@@ -112,7 +112,7 @@ export class PaymentController {
 
       console.log('Verifying payment:', { userId, videoId });
 
-      const verified = await PaymentService.verifyPurchase(userId, videoId, purchaseId);
+      const verified = await PaymentService.verifyPurchase(userId, videoId);
 
       console.log('Payment verification result:', { verified });
 
