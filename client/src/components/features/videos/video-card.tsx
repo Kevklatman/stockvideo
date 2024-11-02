@@ -34,6 +34,7 @@ export function VideoCard({
 }: VideoCardProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
+  const [showControls, setShowControls] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const { user, isInitialized } = useAuth();
 
@@ -61,19 +62,18 @@ export function VideoCard({
       return;
     }
 
+    setShowControls(true);
     setIsPlaying(true);
+    videoRef.current?.play();
   };
 
   const handleVideoEnd = () => {
     setIsPlaying(false);
+    setShowControls(false);
   };
 
   const handleVideoPause = () => {
     setIsPlaying(false);
-  };
-
-  const handleVideoPlay = () => {
-    setIsPlaying(true);
   };
 
   return (
@@ -81,26 +81,39 @@ export function VideoCard({
       <div 
         className="relative aspect-video bg-gray-900"
         onMouseEnter={() => setIsHovering(true)}
-        onMouseLeave={() => setIsHovering(false)}
+        onMouseLeave={() => {
+          setIsHovering(false);
+          if (!isPlaying) setShowControls(false);
+        }}
       >
-<video
-  ref={videoRef}
-  className="w-full h-full object-cover"
-  controls
-  src={videoUrl}
-  poster={thumbnailUrl}
-  preload="metadata"
-  onEnded={handleVideoEnd}
-  onPause={handleVideoPause}
-  onPlay={handleVideoPlay}
->
-  Your browser does not support the video tag.
-</video>
+        <video
+          ref={videoRef}
+          className="w-full h-full object-cover"
+          controls={showControls}
+          src={videoUrl}
+          poster={thumbnailUrl}
+          preload="metadata"
+          onEnded={handleVideoEnd}
+          onPause={handleVideoPause}
+          onPlay={() => {
+            setIsPlaying(true);
+            setShowControls(true);
+          }}
+        >
+          Your browser does not support the video tag.
+        </video>
 
-        {!isPlaying && (
+        {(!isPlaying || !showControls) && (
           <div 
-            onClick={handleVideoClick} 
-            className="cursor-pointer w-full h-full relative group"
+            onClick={() => {
+              if (canPlayVideo) {
+                setShowControls(true);
+                videoRef.current?.play();
+              } else {
+                handleVideoClick();
+              }
+            }} 
+            className="absolute inset-0 cursor-pointer group"
           >
             <div className="absolute inset-0 bg-black/40 group-hover:bg-black/60 transition-colors" />
             
