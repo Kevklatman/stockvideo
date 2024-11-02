@@ -1,7 +1,7 @@
 // src/components/features/videos/video-card.tsx
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, SyntheticEvent } from 'react';
 import { useAuth } from '@/providers/auth-provider';
 import { Play, Lock } from 'lucide-react';
 import { PaymentModal } from './PaymentModal';
@@ -15,7 +15,7 @@ interface VideoCardProps {
   likes: number;
   duration: number;
   views: number;
-  price: string | number; // Updated to handle both string and number
+  price: string | number;
   description: string;
   createdAt: Date;
   authorId: string;
@@ -39,15 +39,15 @@ export function VideoCard({
   const [showControls, setShowControls] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [isPurchasing, setIsPurchasing] = useState(false);
+  const [localPurchased, setLocalPurchased] = useState(purchased);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const { user, isInitialized } = useAuth();
 
   const isOwner = user?.id === authorId;
-  const canPlayVideo = isOwner || purchased;
+  const canPlayVideo = isOwner || localPurchased;
 
-  // Convert price to number for consistent handling
   const numericPrice = typeof price === 'string' ? parseFloat(price) : price;
 
   const formatDate = (date: Date) => {
@@ -73,7 +73,12 @@ export function VideoCard({
 
     setShowControls(true);
     setIsPlaying(true);
-    videoRef.current?.play();
+    try {
+      await videoRef.current?.play();
+    } catch (error) {
+      console.log('Error playing video:', error);
+      setPlaybackError('Error playing video');
+    }
   };
 
   const handleVideoEnd = () => {
@@ -85,6 +90,44 @@ export function VideoCard({
     setIsPlaying(false);
   };
 
+// src/components/features/videos/video-card.tsx
+// Update the handlePurchaseSuccess function:
+
+const handlePurchaseSuccess = async () => {
+  setIsPurchasing(true);
+  try {
+    const response = await fetch(`/api/videos/${id}/verify-purchase`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+      },
+      body: JSON.stringify({
+        videoId: id,
+        purchaseId: localStorage.getItem(`purchase_${id}`), // Add this if you're storing the purchaseId
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Failed to verify purchase');
+    }
+
+    const data = await response.json();
+    if (data.verified) {
+      setLocalPurchased(true);
+      setShowPayment(false);
+    } else {
+      throw new Error('Purchase not verified');
+    }
+  } catch (error) {
+    console.error('Error verifying purchase:', error);
+    alert('Error verifying purchase. Please contact support.');
+  } finally {
+    setIsPurchasing(false);
+  }
+};
+
   return (
     <div className="rounded-lg overflow-hidden shadow-lg bg-black">
       <div 
@@ -95,25 +138,29 @@ export function VideoCard({
           if (!isPlaying) setShowControls(false);
         }}
       >
-      <video
-        ref={videoRef}
-        className="w-full h-full object-cover"
-        controls={showControls}
-        src={videoUrl}
-        poster={thumbnailUrl}
-        preload="metadata"
-        onEnded={handleVideoEnd}
-        onPause={handleVideoPause}
-        onError={() => {
-          setPlaybackError('Error playing video');
-        }}
-        onPlay={() => {
-          setIsPlaying(true);
-          setShowControls(true);
-        }}
-      >
-        Your browser does not support the video tag.
-      </video>
+        <video
+          ref={videoRef}
+          className="w-full h-full object-cover"
+          controls={showControls}
+          src={videoUrl}
+          poster={thumbnailUrl}
+          preload="metadata"
+          onEnded={handleVideoEnd}
+          onPause={handleVideoPause}
+          onError={(e: SyntheticEvent<HTMLVideoElement, Event>) => {
+            console.log('Video error:', {
+              error: e.currentTarget.error,
+              src: e.currentTarget.src
+            });
+            setPlaybackError('Error playing video');
+          }}
+          onPlay={() => {
+            setIsPlaying(true);
+            setShowControls(true);
+          }}
+        >
+          Your browser does not support the video tag.
+        </video>
 
         {(!isPlaying || !showControls) && (
           <div 
@@ -199,7 +246,7 @@ export function VideoCard({
             You own this video
           </div>
         )}
-        {purchased && !isOwner && (
+        {localPurchased && !isOwner && (
           <div className="mt-2 text-xs text-blue-400">
             Purchased
           </div>
@@ -214,25 +261,7 @@ export function VideoCard({
             setShowPayment(false);
             setIsPurchasing(false);
           }}
-          onSuccess={async () => {
-            setIsPurchasing(true);
-            try {
-              await fetch(`/api/videos/${id}/verify-purchase`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-                }
-              });
-              window.location.reload();
-            } catch (error) {
-              console.error('Error verifying purchase:', error);
-              alert('Error verifying purchase. Please contact support.');
-            } finally {
-              setIsPurchasing(false);
-              setShowPayment(false);
-            }
-          }}
+          onSuccess={handlePurchaseSuccess}
           isLoading={isPurchasing}
         />
       )}
