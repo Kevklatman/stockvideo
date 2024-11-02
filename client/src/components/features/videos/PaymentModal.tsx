@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { usePayment } from '@/hooks/usePayment';
 import {
   CardElement,
@@ -25,11 +25,13 @@ const PaymentForm = ({ videoId, price, onSuccess, onClose, isLoading }: PaymentM
   const { createPaymentIntent, error: paymentError } = usePayment();
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  
+  const isSubmittingRef = useRef(false);
+  const lastSubmissionTimeRef = useRef(0);
 
   useEffect(() => {
     return () => {
-      setSubmitting(false);
+      isSubmittingRef.current = false;
       setProcessing(false);
       setError(null);
     };
@@ -37,16 +39,30 @@ const PaymentForm = ({ videoId, price, onSuccess, onClose, isLoading }: PaymentM
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    
-    if (!stripe || !elements || submitting) {
+    event.stopPropagation();
+
+    if (!stripe || !elements) {
+      setError('Payment system not initialized');
       return;
     }
-    
-    setSubmitting(true);
-    setProcessing(true);
-    setError(null);
-    
+
+    if (isSubmittingRef.current) {
+      console.log('Blocked: Submission already in progress');
+      return;
+    }
+
+    const now = Date.now();
+    if (now - lastSubmissionTimeRef.current < 2000) {
+      console.log('Blocked: Too many attempts');
+      return;
+    }
+
     try {
+      isSubmittingRef.current = true;
+      lastSubmissionTimeRef.current = now;
+      setProcessing(true);
+      setError(null);
+
       const { clientSecret } = await createPaymentIntent(videoId);
       
       const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(
@@ -57,7 +73,7 @@ const PaymentForm = ({ videoId, price, onSuccess, onClose, isLoading }: PaymentM
           },
         }
       );
-  
+
       if (stripeError) {
         setError(stripeError.message || 'Payment failed');
       } else if (paymentIntent.status === 'succeeded') {
@@ -67,9 +83,11 @@ const PaymentForm = ({ videoId, price, onSuccess, onClose, isLoading }: PaymentM
       setError(err instanceof Error ? err.message : 'Payment failed');
     } finally {
       setProcessing(false);
-      setSubmitting(false);
+      isSubmittingRef.current = false;
     }
   };
+
+  const isDisabled = !stripe || processing || isLoading || isSubmittingRef.current;
 
   return (
     <form onSubmit={handleSubmit} className="w-full space-y-4">
@@ -117,11 +135,11 @@ const PaymentForm = ({ videoId, price, onSuccess, onClose, isLoading }: PaymentM
 
         <button
           type="submit"
-          disabled={!stripe || processing || isLoading || submitting}
+          disabled={isDisabled}
           className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 
                    transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {(processing || isLoading || submitting) ? (
+          {(processing || isLoading || isSubmittingRef.current) ? (
             <div className="flex items-center justify-center space-x-2">
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               <span>Processing...</span>
