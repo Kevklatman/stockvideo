@@ -19,6 +19,8 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.682.0",
     "@aws-sdk/s3-request-presigner": "^3.682.0",
+    "@stripe/react-stripe-js": "^2.8.1",
+    "@stripe/stripe-js": "^1.54.2",
     "@types/bcryptjs": "^2.4.6",
     "bcryptjs": "^2.4.3",
     "class-transformer": "^0.5.1",
@@ -56,6 +58,7 @@
     "@types/multer": "^1.4.12",
     "@types/node": "^20.11.0",
     "@types/stripe": "^8.0.417",
+    "@types/stripe-v3": "^3.1.33",
     "@types/supertest": "^6.0.2",
     "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^6.19.0",

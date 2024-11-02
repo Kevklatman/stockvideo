@@ -1,9 +1,7 @@
 // app/lib/api.ts
 
 function normalizeUrl(base: string, endpoint: string): string {
-  // Remove trailing slash from base
   base = base.replace(/\/$/, '');
-  // Ensure endpoint starts with slash
   endpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   return `${base}${endpoint}`;
 }
@@ -56,12 +54,46 @@ export interface VideoUrls {
   thumbnailUrl: string;
 }
 
+export interface PaymentIntentResponse {
+  clientSecret: string;
+  amount: number;
+  currency: string;
+  status?: string;
+}
+
+export interface PaymentVerificationResponse {
+  verified: boolean;
+  purchaseId?: string;
+  purchaseDate?: string;
+}
+
+export interface PurchaseHistoryItem {
+  id: string;
+  videoId: string;
+  amount: number;
+  status: 'pending' | 'completed' | 'failed';
+  createdAt: string;
+  completedAt?: string;
+  video: {
+    title: string;
+    thumbnailUrl: string;
+  };
+}
+
+export interface PurchaseHistoryResponse {
+  purchases: PurchaseHistoryItem[];
+  total: number;
+  page: number;
+  pages: number;
+}
+
 interface FetchOptions extends Omit<RequestInit, 'body'> {
   headers?: Record<string, string>;
   skipAuth?: boolean;
   retries?: number;
   body?: FormData | string | object;
   onUploadProgress?: (event: UploadProgressEvent) => void;
+  params?: Record<string, string | number | boolean>;
 }
 
 const DEFAULT_RETRY_COUNT = 2;
@@ -150,12 +182,10 @@ function createXHRPromise(
 
     xhr.open(request.method || 'GET', request.url);
 
-    // Set request headers
     Object.entries(headers).forEach(([key, value]) => {
       xhr.setRequestHeader(key, value);
     });
 
-    // Send the request
     const body = request.body;
     if (body instanceof FormData) {
       xhr.send(body);
@@ -400,5 +430,20 @@ export const api = {
 
     delete: (videoId: string) =>
       api.delete(`/api/videos/${videoId}`)
+  },
+
+  payments: {
+    createIntent: (videoId: string) =>
+      api.post<PaymentIntentResponse>('/api/payments/create-intent', { videoId }),
+
+    verifyPurchase: (videoId: string) =>
+      api.get<PaymentVerificationResponse>(`/api/payments/verify/${videoId}`),
+
+    getPurchaseHistory: (params?: { 
+      page?: number; 
+      limit?: number; 
+      status?: 'pending' | 'completed' | 'failed' 
+    }) =>
+      api.get<PurchaseHistoryResponse>('/api/payments/history', { params })
   }
 };

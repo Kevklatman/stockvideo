@@ -5,14 +5,10 @@ import { Purchase } from "../models/purchase.model";
 import { Video } from "../models/video.model";
 import { User } from "../models/user.model";
 import { PaymentError } from "../types/errors";
-import { 
-  PaymentIntent, 
-  PaymentResult, 
-  PaymentMeta,
-  PurchaseStatus 
-} from "../types";
+import { PaymentIntent, PurchaseStatus } from "../types";
 import { Logger } from "../utils/logger";
 import redisClient from '../config/redis';
+import { toCents, isValidPrice, parsePrice } from '../utils/price';
 
 export class PaymentService {
   private static purchaseRepository = AppDataSource.getRepository(Purchase);
@@ -20,31 +16,56 @@ export class PaymentService {
   private static userRepository = AppDataSource.getRepository(User);
   private static readonly logger = Logger.getInstance();
   
-  private static stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-    apiVersion: '2023-10-16'
-  });
+  private static stripe: Stripe;
 
   private static readonly PURCHASE_LOCK_TTL = 300; // 5 minutes
   private static readonly PAYMENT_CACHE_TTL = 3600; // 1 hour
 
-  /**
-   * Creates a payment intent with Stripe and initializes a purchase record
-   */
+  private static initStripe() {
+    if (!process.env.STRIPE_SECRET_KEY) {
+      throw new PaymentError('Stripe secret key is not configured');
+    }
+
+    if (!this.stripe) {
+      this.stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+        apiVersion: '2023-10-16'
+      });
+    }
+
+    return this.stripe;
+  }
+
   static async createPaymentIntent(
     userId: string, 
     videoId: string
   ): Promise<PaymentIntent> {
+    console.log('Starting payment intent creation:', { userId, videoId });
+    
     try {
+      // Initialize Stripe
+      const stripe = this.initStripe();
+
       // Verify video exists and get price
+      console.log('Finding video:', videoId);
       const video = await this.videoRepository.findOne({
-        where: { id: videoId }
+        where: { id: videoId },
+        select: ['id', 'price', 'title'] // Add specific fields you need
       });
 
+      console.log('Video lookup result:', video);
+
       if (!video) {
+        console.error('Video not found:', videoId);
         throw new PaymentError('Video not found');
       }
 
+      if (typeof video.price !== 'number' || video.price <= 0) {
+        console.error('Invalid video price:', video.price);
+        throw new PaymentError('Invalid video price');
+      }
+
       // Check if video is already purchased
+      console.log('Checking existing purchase');
       const existingPurchase = await this.purchaseRepository.findOne({
         where: { 
           userId, 
@@ -54,46 +75,72 @@ export class PaymentService {
       });
 
       if (existingPurchase) {
+        console.error('Video already purchased:', { userId, videoId });
         throw new PaymentError('Video already purchased');
       }
 
       // Acquire lock to prevent duplicate purchases
+      console.log('Acquiring purchase lock');
       const lockToken = await this.acquirePurchaseLock(userId, videoId);
       if (!lockToken) {
+        console.error('Failed to acquire purchase lock:', { userId, videoId });
         throw new PaymentError('Purchase already in progress');
       }
 
       try {
         // Create a new purchase record
+        console.log('Creating purchase record');
         const purchase = this.purchaseRepository.create({
           userId,
           videoId,
           amount: video.price,
           status: 'pending'
         });
-        await this.purchaseRepository.save(purchase);
+
+        console.log('Saving purchase record');
+        const savedPurchase = await this.purchaseRepository.save(purchase);
+        console.log('Purchase record created:', savedPurchase);
+
+        // Convert price to cents for Stripe
+        const amountInCents = Math.round(video.price * 100);
+        console.log('Creating Stripe payment intent:', { 
+          amount: amountInCents, 
+          currency: 'usd',
+          videoId,
+          purchaseId: savedPurchase.id 
+        });
 
         // Create Stripe PaymentIntent
-        const paymentIntent = await this.stripe.paymentIntents.create({
-          amount: Math.round(video.price * 100), // Convert to cents
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: amountInCents,
           currency: 'usd',
           metadata: {
-            purchaseId: purchase.id,
+            purchaseId: savedPurchase.id,
             videoId,
             userId
           }
         });
 
+        console.log('Payment intent created:', { 
+          intentId: paymentIntent.id, 
+          status: paymentIntent.status,
+          hasClientSecret: !!paymentIntent.client_secret
+        });
+
+        if (!paymentIntent.client_secret) {
+          throw new PaymentError('Failed to generate client secret');
+        }
+
         // Cache payment intent details
         await this.cachePaymentIntent(
           paymentIntent.id,
-          purchase.id,
+          savedPurchase.id,
           videoId,
           userId
         );
 
         return {
-          clientSecret: paymentIntent.client_secret!,
+          clientSecret: paymentIntent.client_secret,
           amount: video.price,
           currency: 'usd'
         };
@@ -102,14 +149,27 @@ export class PaymentService {
         await this.releasePurchaseLock(userId, videoId, lockToken);
       }
     } catch (error) {
-      this.logger.error('Payment intent creation failed:', error);
+      console.error('Payment intent creation failed:', {
+        error,
+        userId,
+        videoId,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error'
+      });
+
       if (error instanceof PaymentError) {
         throw error;
       }
-      throw new PaymentError('Failed to create payment intent');
+
+      if (error instanceof Stripe.errors.StripeError) {
+        throw new PaymentError(`Stripe error: ${error.message}`);
+      }
+
+      throw new PaymentError(
+        'Failed to create payment intent: ' + 
+        (error instanceof Error ? error.message : 'Unknown error')
+      );
     }
   }
-
   /**
    * Verifies if a user has purchased a video
    */
@@ -128,7 +188,6 @@ export class PaymentService {
       return false;
     }
   }
-
   /**
    * Handles Stripe webhook events
    */

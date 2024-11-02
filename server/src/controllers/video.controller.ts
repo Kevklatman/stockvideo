@@ -7,14 +7,14 @@ import { plainToClass } from "class-transformer";
 import { validate } from "class-validator";
 import { CreateVideoDto, UpdateVideoDto, VideoSearchDto } from "../dtos/video.dto";
 import { 
-  VideoProcessingError, 
-  VideoAccessError, 
   ValidationError,
   StorageError 
 } from "../types/errors";
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import crypto from 'crypto';
+import { PaymentService } from "../services/payment.service";
+import { VideoAccessError } from "../types";
 
 export class VideoController {
   private static s3Client = new S3Client({
@@ -146,7 +146,7 @@ static async getAllVideos(req: Request, res: Response, next: NextFunction): Prom
             res.status(416).json({
               status: 'error',
               code: 'INVALID_RANGE',
-              message: error.message
+              message: (error as Error).message
             });
             return;
           }
@@ -355,7 +355,7 @@ static async getVideoUrls(req: Request, res: Response) {
       res.status(403).json({
         status: 'error',
         code: 'ACCESS_DENIED',
-        message: error.message
+        message: (error as Error).message
       });
       return;
     }
@@ -565,4 +565,58 @@ static async getVideoUrls(req: Request, res: Response) {
         next(error);
       }
     }
+
+    // src/controllers/video.controller.ts
+
+// Add this method to your existing VideoController class
+static async verifyPurchase(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.user?.id;
+    const { videoId } = req.params;
+
+    if (!userId) {
+      res.status(401).json({
+        status: 'error',
+        code: 'UNAUTHORIZED',
+        message: 'Authentication required'
+      });
+      return;
+    }
+
+    if (!videoId) {
+      res.status(400).json({
+        status: 'error',
+        code: 'BAD_REQUEST',
+        message: 'Video ID is required'
+      });
+      return;
+    }
+
+    // Check video ownership first
+    const isOwner = await VideoService.isVideoOwner(videoId, userId);
+    if (isOwner) {
+      res.json({
+        status: 'success',
+        data: {
+          verified: true,
+          isOwner: true
+        }
+      });
+      return;
+    }
+
+    // Check if video is purchased
+    const isPurchased = await PaymentService.verifyPurchase(userId, videoId);
+    
+    res.json({
+      status: 'success',
+      data: {
+        verified: isPurchased,
+        isOwner: false
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+}
 }

@@ -9,9 +9,23 @@ import {
   validateUploadedFile 
 } from "../middleware/video-upload.middleware";
 import { UploadController } from "../controllers/upload.controller";
+import { MulterError } from 'multer';
 
-// Create the router instance
 const router = Router();
+
+// Error handling middleware with proper typing
+const uploadErrorHandler = (
+  err: Error | MulterError,
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
+  if (err instanceof MulterError) {
+    handleUploadError(err, req, res, next);
+  } else {
+    next(err);
+  }
+};
 
 // Public routes
 router.get(
@@ -19,26 +33,22 @@ router.get(
   ...VideoAccessMiddleware.middlewareChain.preview,
   VideoController.streamPreview
 );
+
 // Get all videos
 router.get(
   '/',
   VideoController.getAllVideos
 );
+
 // Protected routes
 router.use(authMiddleware);
 
-// Upload route with proper middleware chain
+// Upload route with proper middleware chain and error handling
 router.post(
   "/upload",
   videoUpload.single('video'),
   validateUploadedFile,
-  (err: any, req: Request, res: Response, next: NextFunction) => {
-    if (err) {
-      handleUploadError(err, req, res, next);
-    } else {
-      next();
-    }
-  },
+  uploadErrorHandler,
   VideoController.uploadVideo
 );
 
@@ -46,6 +56,13 @@ router.post(
 router.get(
   '/user',
   VideoController.getUserVideos
+);
+
+// Verify purchase
+router.get(
+  '/:videoId/verify-purchase',
+  authMiddleware,
+  VideoController.verifyPurchase
 );
 
 // Full video access
@@ -96,10 +113,9 @@ router.get(
 // Get video URLs
 router.get(
   "/:videoId/urls",
-  authMiddleware, // Make sure this is here
+  authMiddleware,
   VideoController.getVideoUrls
 );
-router.get("/:videoId/urls", VideoController.getVideoUrls);
 
 // Upload URL routes
 router.post(
@@ -107,6 +123,5 @@ router.post(
   authMiddleware,
   UploadController.getUploadUrl
 );
-
 
 export { router as videoRouter };

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { JwtPayload } from 'jsonwebtoken';
 import { Stripe } from 'stripe';
+export * from './errors';
 
 // Express request params & query types
 export interface VideoRequestParams {
@@ -71,7 +72,17 @@ export interface FrontendConfig {
     allowedTypes: string[];
   };
 }
+export interface PurchaseVerificationResponse {
+  verified: boolean;
+  isOwner: boolean;
+}
 
+export interface VideoAccessVerification {
+  canAccess: boolean;
+  isOwner: boolean;
+  purchaseRequired: boolean;
+  purchaseStatus?: 'not_purchased' | 'pending' | 'completed';
+}
 // Video related types
 export interface VideoPreset {
   resolution: string;
@@ -100,6 +111,22 @@ export interface DownloadToken {
   expiresAt: number;
 }
 
+export interface ApiResponse<T> {
+  status: 'success' | 'error';
+  data?: T;
+  message?: string;
+  code?: string;
+  errors?: Array<{ field: string; message: string }>;
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pages: number;
+  hasNext: boolean;
+  hasPrevious: boolean;
+}
 // Payment related types
 export interface PaymentMeta {
   purchaseId: string;
@@ -142,7 +169,12 @@ export interface VideoUploadResult {
     [key: string]: string;
   };
 }
-
+export interface PurchaseHistoryResponse {
+  purchases: PurchaseHistoryItem[];
+  total: number;
+  page: number;
+  pages: number;
+}
 export interface PurchaseStatus {
   status: 'pending' | 'completed' | 'failed';
   message?: string;
@@ -216,6 +248,69 @@ export class StorageError extends BaseError {
   constructor(message: string) {
     super(message, 'STORAGE_ERROR');
   }
+}
 
-  
+// Add to your types/index.ts
+
+export interface StripePaymentIntent {
+  id: string;
+  client_secret: string;
+  amount: number;
+  currency: string;
+  status: string;
+  metadata: {
+    purchaseId?: string;
+    videoId?: string;
+    userId?: string;
+  };
+}
+
+export interface PaymentResponse {
+  status: 'success' | 'error';
+  data?: {
+    clientSecret: string;
+    amount: number;
+    currency: string;
+  };
+  error?: {
+    message: string;
+    code: string;
+  };
+}
+
+export interface PaymentIntentResponse {
+  clientSecret: string;
+  amount: number;
+  currency: string;
+  status?: string;
+}
+
+export interface PaymentVerificationResponse {
+  verified: boolean;
+  purchaseId?: string;
+  purchaseDate?: string;
+}
+
+export interface PurchaseHistoryItem {
+  id: string;
+  videoId: string;
+  amount: number;
+  status: 'pending' | 'completed' | 'failed';
+  createdAt: string;
+  completedAt?: string;
+  video: {
+    title: string;
+    thumbnailUrl: string;
+  };
+}
+
+export interface PurchaseVerificationResponse {
+  status: 'success' | 'error';
+  data?: {
+    verified: boolean;
+  };
+  error?: {
+    message: string;
+    code: string;
+  };
 }

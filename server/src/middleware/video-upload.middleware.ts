@@ -3,7 +3,6 @@ import { Request, Response, NextFunction } from 'express';
 import multer, { MulterError } from 'multer';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { ErrorRequestHandler, RequestHandler } from 'express';
 
 // Configure multer storage
 const storage = multer.diskStorage({
@@ -17,7 +16,7 @@ const storage = multer.diskStorage({
 });
 
 // Configure multer upload settings
-const upload = multer({
+export const videoUpload = multer({
   storage: storage,
   limits: {
     fileSize: 100 * 1024 * 1024, // 100MB limit
@@ -32,11 +31,13 @@ const upload = multer({
   }
 });
 
-// Export configured upload middleware
-export const videoUpload = upload;
-
-// Error handler middleware
-export const handleUploadError: ErrorRequestHandler = (err: unknown, req: Request, res: Response, next: NextFunction): void => {
+// Error handler middleware with proper typing
+export const handleUploadError = (
+  err: MulterError | Error,
+  _req: Request,
+  res: Response,
+  _next: NextFunction
+): void => {
   if (err instanceof MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
       res.status(400).json({
@@ -54,16 +55,11 @@ export const handleUploadError: ErrorRequestHandler = (err: unknown, req: Reques
     return;
   }
   
-  if (err instanceof Error) {
-    res.status(400).json({
-      status: 'error',
-      code: 'INVALID_FILE',
-      message: err.message
-    });
-    return;
-  }
-  
-  next(err);
+  res.status(400).json({
+    status: 'error',
+    code: 'INVALID_FILE',
+    message: err.message
+  });
 };
 
 // Type guard for multer file
@@ -77,8 +73,12 @@ export function isMulterFile(file: any): file is Express.Multer.File {
   );
 }
 
-// Validate uploaded file middleware
-export const validateUploadedFile: RequestHandler = (req: Request, res: Response, next: NextFunction): void => {
+// Validate uploaded file middleware with proper typing
+export const validateUploadedFile = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
   if (!req.file) {
     res.status(400).json({
       status: 'error',

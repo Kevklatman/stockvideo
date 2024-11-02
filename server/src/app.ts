@@ -9,6 +9,8 @@ import { security } from "./config/security";
 import { errorHandler } from "./middleware/error.middleware";
 import { useContainer} from "routing-controllers";
 import { Container } from "typedi";
+import { paymentRouter } from "./routes/payment.routes";
+
 
 // Load environment variables early
 dotenv.config({ path: path.join(__dirname, '../.env') });
@@ -60,8 +62,15 @@ app.use(security.sanitizeRequest);
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
 }
+app.post(
+  '/api/payments/webhook',
+  express.raw({ type: 'application/json' }),
+  paymentRouter
+);
+app.post('/api/payments/webhook', express.raw({ type: 'application/json' }));
 
-// API Routes
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 const apiRouter = express.Router();
 
 // Rate limiting for API routes
@@ -72,6 +81,9 @@ apiRouter.use('/', security.rateLimits.api);
 // Mount route handlers
 apiRouter.use("/auth", authRouter);
 apiRouter.use("/videos", videoRouter);
+apiRouter.use("/payments", paymentRouter);
+
+
 
 // Mount all API routes under /api
 app.use("/api", apiRouter);
@@ -97,6 +109,7 @@ app.get('/health', security.rateLimits.api, (req, res) => {
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
   errorHandler(err, req, res, next);
 });
+app.use(errorHandler);
 
 // Handle 404
 app.use((_req, res) => {

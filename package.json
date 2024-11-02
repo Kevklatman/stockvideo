@@ -27,6 +27,7 @@
     "@aws-sdk/cloudfront-signer": "^3.679.0",
     "@aws-sdk/s3-presigned-post": "^3.682.0",
     "@aws-sdk/s3-request-presigner": "^3.682.0",
+    "@stripe/react-stripe-js": "^2.8.1",
     "@types/aws-sdk": "^2.7.4",
     "aws-sdk": "^2.1691.0",
     "axios": "^1.7.7",
@@ -40,6 +41,7 @@
     "lodash": "^4.17.21",
     "next-auth": "^4.24.10",
     "pg": "^8.11.3",
+    "stripe": "^17.3.1",
     "zod": "^3.22.4"
   },
   "devDependencies": {

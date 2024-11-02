@@ -1,8 +1,10 @@
+// src/components/features/videos/video-card.tsx
 'use client';
 
 import { useState, useRef } from 'react';
 import { useAuth } from '@/providers/auth-provider';
 import { Play, Lock } from 'lucide-react';
+import { PaymentModal } from './PaymentModal';
 
 interface VideoCardProps {
   id: string;
@@ -13,7 +15,7 @@ interface VideoCardProps {
   likes: number;
   duration: number;
   views: number;
-  price: string;
+  price: string | number; // Updated to handle both string and number
   description: string;
   createdAt: Date;
   authorId: string;
@@ -35,11 +37,18 @@ export function VideoCard({
   const [isPlaying, setIsPlaying] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
   const [showControls, setShowControls] = useState(false);
+  const [showPayment, setShowPayment] = useState(false);
+  const [isPurchasing, setIsPurchasing] = useState(false);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const { user, isInitialized } = useAuth();
 
   const isOwner = user?.id === authorId;
   const canPlayVideo = isOwner || purchased;
+
+  // Convert price to number for consistent handling
+  const numericPrice = typeof price === 'string' ? parseFloat(price) : price;
 
   const formatDate = (date: Date) => {
     return date.toLocaleDateString('en-US', {
@@ -58,7 +67,7 @@ export function VideoCard({
     }
 
     if (!canPlayVideo) {
-      alert('Please purchase this video to watch it');
+      setShowPayment(true);
       return;
     }
 
@@ -95,6 +104,10 @@ export function VideoCard({
           preload="metadata"
           onEnded={handleVideoEnd}
           onPause={handleVideoPause}
+          onError={(e) => {
+            console.error('Video error:', e);
+            setPlaybackError('Error playing video');
+          }}
           onPlay={() => {
             setIsPlaying(true);
             setShowControls(true);
@@ -135,11 +148,28 @@ export function VideoCard({
                   <div className="flex flex-col items-center gap-2">
                     <Lock size={32} className="text-white" />
                     <div className="text-white text-lg font-medium px-4 py-2 bg-blue-600 rounded">
-                      ${price}
+                      ${numericPrice.toFixed(2)}
                     </div>
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {playbackError && (
+          <div className="absolute inset-0 bg-black/75 flex items-center justify-center">
+            <div className="text-white text-center p-4">
+              <p>{playbackError}</p>
+              <button 
+                onClick={() => {
+                  setPlaybackError(null);
+                  videoRef.current?.load();
+                }}
+                className="mt-2 px-4 py-2 bg-blue-600 rounded hover:bg-blue-700"
+              >
+                Retry
+              </button>
             </div>
           </div>
         )}
@@ -154,14 +184,12 @@ export function VideoCard({
             {user && !canPlayVideo && (
               <button 
                 className="text-blue-400 hover:text-blue-300 transition-colors"
-                onClick={() => {
-                  console.log('Purchase video:', id);
-                }}
+                onClick={() => setShowPayment(true)}
               >
                 Purchase
               </button>
             )}
-            {!isOwner && <span>${price}</span>}
+            {!isOwner && <span>${numericPrice.toFixed(2)}</span>}
           </div>
         </div>
         <div className="text-xs text-gray-500 mt-2">
@@ -178,6 +206,37 @@ export function VideoCard({
           </div>
         )}
       </div>
+      
+      {showPayment && (
+        <PaymentModal
+          videoId={id}
+          price={numericPrice}
+          onClose={() => {
+            setShowPayment(false);
+            setIsPurchasing(false);
+          }}
+          onSuccess={async () => {
+            setIsPurchasing(true);
+            try {
+              await fetch(`/api/videos/${id}/verify-purchase`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+                }
+              });
+              window.location.reload();
+            } catch (error) {
+              console.error('Error verifying purchase:', error);
+              alert('Error verifying purchase. Please contact support.');
+            } finally {
+              setIsPurchasing(false);
+              setShowPayment(false);
+            }
+          }}
+          isLoading={isPurchasing}
+        />
+      )}
     </div>
   );
 }
