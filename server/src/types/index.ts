@@ -1,9 +1,50 @@
 import { Request, Response } from 'express';
 import { JwtPayload } from 'jsonwebtoken';
 import { Stripe } from 'stripe';
-export * from './errors';
 
-// Express request params & query types
+// Core Domain Types
+export interface User {
+  id: string;
+  email: string;
+  role: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Video {
+  id: string;
+  title: string;
+  description: string;
+  price: number;           // in dollars
+  previewUrl: string;
+  fullVideoUrl: string;
+  thumbnailUrl: string;
+  userId: string;
+  createdAt: string;
+  updatedAt: string;
+  user?: User;
+}
+
+export interface Purchase {
+  id: string;
+  userId: string;
+  videoId: string;
+  amount: number;         // in dollars
+  status: PurchaseStatus['status'];
+  stripePaymentId?: string;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+  video?: Video;
+}
+
+// Status Types
+export interface PurchaseStatus {
+  status: 'pending' | 'completed' | 'failed';
+  message?: string;
+}
+
+// Express Types
 export interface VideoRequestParams {
   videoId: string;
   [key: string]: string | undefined;
@@ -26,64 +67,74 @@ export interface VideoResponseLocals {
   preferredFormat?: 'hls' | 'mp4';
 }
 
-// Express extended request/response types
-export interface VideoRequest extends Request<
-  VideoRequestParams,
-  any,
-  any,
-  StreamQueryParams
-> {}
-
+export interface VideoRequest extends Request<VideoRequestParams, any, any, StreamQueryParams> {}
 export interface VideoResponse extends Response<any, VideoResponseLocals> {}
 
-// Auth request types
-export interface AuthenticatedVideoRequest extends Request<
-  VideoRequestParams,
-  any,
-  any,
-  StreamQueryParams
-> {
-  user?: {
-    id: string;
-    email: string;
-    role: string;
+export interface AuthenticatedRequest<P = any, ResBody = any, ReqBody = any, ReqQuery = any> 
+extends Request<P, ResBody, ReqBody, ReqQuery> {
+  user?: User;
+}
+
+export interface AuthenticatedVideoRequest extends AuthenticatedRequest<VideoRequestParams, any, any, StreamQueryParams> {}
+
+// Payment Types
+export interface PaymentIntent {
+  clientSecret: string;
+  amount: number;         // in dollars
+  currency: string;
+  metadata?: Record<string, string>;
+}
+
+export interface PaymentIntentResponse {
+  clientSecret: string;
+  amount: number;         // in dollars
+  currency: string;
+  status?: string;
+}
+
+export interface PaymentMethod {
+  id: string;
+  type: string;
+  card?: {
+    brand: string;
+    last4: string;
+    expMonth: number;
+    expYear: number;
   };
 }
 
-export interface AuthenticatedRequest<
-  P = any,
-  ResBody = any,
-  ReqBody = any,
-  ReqQuery = any
-> extends Request<P, ResBody, ReqBody, ReqQuery> {
-  user?: {
-    id: string;
-    email: string;
-    role: string;
-  };
+export interface PaymentMeta {
+  purchaseId: string;
+  videoId: string;
+  userId: string;
 }
 
-// Frontend related types
-export interface FrontendConfig {
-  stripePublishableKey: string;
-  apiUrl: string;
-  uploadLimits: {
-    maxFileSize: number;
-    allowedTypes: string[];
-  };
-}
-export interface PurchaseVerificationResponse {
+export interface PaymentVerificationResponse {
   verified: boolean;
-  isOwner: boolean;
+  purchaseId?: string;
+  purchaseDate?: string;
 }
 
-export interface VideoAccessVerification {
-  canAccess: boolean;
-  isOwner: boolean;
-  purchaseRequired: boolean;
-  purchaseStatus?: 'not_purchased' | 'pending' | 'completed';
+export interface PaymentResult {
+  success: boolean;
+  error?: {
+    message: string;
+    code: string;
+  };
+  paymentIntentId?: string;
+  purchaseId?: string;
 }
-// Video related types
+
+// Component Props Types
+export interface PaymentModalProps {
+  videoId: string;
+  price: number;          // in dollars
+  onClose: () => void;
+  onSuccess: () => void;
+  isLoading?: boolean;
+}
+
+// Video Processing Types
 export interface VideoPreset {
   resolution: string;
   videoBitrate: string;
@@ -99,6 +150,15 @@ export interface ProcessedVideo {
   duration: number;
 }
 
+export interface VideoUploadResult {
+  previewUrl: string;
+  thumbnailUrl: string;
+  qualityUrls: {
+    [key: string]: string;
+  };
+}
+
+// Access Control Types
 export interface StreamingToken extends JwtPayload {
   videoId: string;
   userId: string;
@@ -111,6 +171,14 @@ export interface DownloadToken {
   expiresAt: number;
 }
 
+export interface VideoAccessVerification {
+  canAccess: boolean;
+  isOwner: boolean;
+  purchaseRequired: boolean;
+  purchaseStatus?: 'not_purchased' | 'pending' | 'completed';
+}
+
+// API Response Types
 export interface ApiResponse<T> {
   status: 'success' | 'error';
   data?: T;
@@ -127,66 +195,34 @@ export interface PaginatedResponse<T> {
   hasNext: boolean;
   hasPrevious: boolean;
 }
-// Payment related types
-export interface PaymentMeta {
-  purchaseId: string;
-  videoId: string;
-  userId: string;
-}
 
-export interface PaymentIntent {
-  clientSecret: string;
-  amount: number;
-  currency: string;
-  metadata?: Record<string, string>;
-}
-
-export interface PaymentMethod {
-  id: string;
-  type: string;
-  card?: {
-    brand: string;
-    last4: string;
-    expMonth: number;
-    expYear: number;
-  };
-}
-
-export interface PaymentResult {
-  success: boolean;
-  error?: {
-    message: string;
-    code: string;
-  };
-  paymentIntentId?: string;
-  purchaseId?: string;
-}
-
-export interface VideoUploadResult {
-  previewUrl: string;
-  thumbnailUrl: string;
-  qualityUrls: {
-    [key: string]: string;
-  };
-}
 export interface PurchaseHistoryResponse {
   purchases: PurchaseHistoryItem[];
   total: number;
   page: number;
   pages: number;
 }
-export interface PurchaseStatus {
-  status: 'pending' | 'completed' | 'failed';
-  message?: string;
+
+export interface PurchaseHistoryItem {
+  id: string;
+  videoId: string;
+  amount: number;         // in dollars
+  status: PurchaseStatus['status'];
+  createdAt: string;
+  completedAt?: string;
+  video: {
+    title: string;
+    thumbnailUrl: string;
+  };
 }
 
-// Stripe related types
-export interface StripeWebhookPayload {
-  id: string;
-  object: string;
-  type: string;
-  data: {
-    object: Stripe.PaymentIntent;
+// Configuration Types
+export interface FrontendConfig {
+  stripePublishableKey: string;
+  apiUrl: string;
+  uploadLimits: {
+    maxFileSize: number;
+    allowedTypes: string[];
   };
 }
 
@@ -198,7 +234,6 @@ export interface StripeConfig {
   paymentMethods: string[];
 }
 
-// Redis related types
 export interface RedisConfig {
   host: string;
   port: number;
@@ -211,7 +246,30 @@ export interface CacheConfig {
   prefix: string;
 }
 
-// Error classes
+// Stripe Types
+export interface StripeWebhookPayload {
+  id: string;
+  object: string;
+  type: string;
+  data: {
+    object: Stripe.PaymentIntent;
+  };
+}
+
+export interface StripePaymentIntent {
+  id: string;
+  client_secret: string;
+  amount: number;         // in cents (Stripe format)
+  currency: string;
+  status: string;
+  metadata: {
+    purchaseId?: string;
+    videoId?: string;
+    userId?: string;
+  };
+}
+
+// Error Classes
 export abstract class BaseError extends Error {
   constructor(message: string, public code: string) {
     super(message);
@@ -248,69 +306,4 @@ export class StorageError extends BaseError {
   constructor(message: string) {
     super(message, 'STORAGE_ERROR');
   }
-}
-
-// Add to your types/index.ts
-
-export interface StripePaymentIntent {
-  id: string;
-  client_secret: string;
-  amount: number;
-  currency: string;
-  status: string;
-  metadata: {
-    purchaseId?: string;
-    videoId?: string;
-    userId?: string;
-  };
-}
-
-export interface PaymentResponse {
-  status: 'success' | 'error';
-  data?: {
-    clientSecret: string;
-    amount: number;
-    currency: string;
-  };
-  error?: {
-    message: string;
-    code: string;
-  };
-}
-
-export interface PaymentIntentResponse {
-  clientSecret: string;
-  amount: number;
-  currency: string;
-  status?: string;
-}
-
-export interface PaymentVerificationResponse {
-  verified: boolean;
-  purchaseId?: string;
-  purchaseDate?: string;
-}
-
-export interface PurchaseHistoryItem {
-  id: string;
-  videoId: string;
-  amount: number;
-  status: 'pending' | 'completed' | 'failed';
-  createdAt: string;
-  completedAt?: string;
-  video: {
-    title: string;
-    thumbnailUrl: string;
-  };
-}
-
-export interface PurchaseVerificationResponse {
-  status: 'success' | 'error';
-  data?: {
-    verified: boolean;
-  };
-  error?: {
-    message: string;
-    code: string;
-  };
 }

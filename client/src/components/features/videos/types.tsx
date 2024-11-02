@@ -25,7 +25,7 @@ export interface PaymentModalProps {
 
   export interface PaymentModalProps {
     videoId: string;
-    price: number; // Expecting a number here
+    price: number; // in dollars
     onClose: () => void;
     onSuccess: () => void;
     isLoading?: boolean;

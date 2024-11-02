@@ -26,41 +26,41 @@ const PaymentForm = ({ videoId, price, onSuccess, onClose, isLoading }: PaymentM
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-
-    if (!stripe || !elements) {
-      return;
-    }
-
-    setProcessing(true);
-    setError(null);
-
-    try {
-      // Get payment intent
-      const { clientSecret } = await createPaymentIntent(videoId);
-
-      // Confirm the payment
-      const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(
-        clientSecret,
-        {
-          payment_method: {
-            card: elements.getElement(CardElement)!,
-          },
-        }
-      );
-
-      if (stripeError) {
-        setError(stripeError.message || 'Payment failed');
-      } else if (paymentIntent.status === 'succeeded') {
-        onSuccess();
+    const handleSubmit = async (event: React.FormEvent) => {
+      event.preventDefault();
+    
+      if (!stripe || !elements) {
+        return;
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Payment failed');
-    } finally {
-      setProcessing(false);
-    }
-  };
+    
+      setProcessing(true);
+      setError(null);
+    
+      try {
+        // createPaymentIntent now returns PaymentIntentResponse directly
+        const { clientSecret } = await createPaymentIntent(videoId);
+    
+        const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(
+          clientSecret,
+          {
+            payment_method: {
+              card: elements.getElement(CardElement)!,
+            },
+          }
+        );
+    
+        if (stripeError) {
+          setError(stripeError.message || 'Payment failed');
+        } else if (paymentIntent.status === 'succeeded') {
+          onSuccess();
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Payment failed');
+      } finally {
+        setProcessing(false);
+      }
+    };
+    
 
   return (
     <form onSubmit={handleSubmit} className="w-full space-y-4">

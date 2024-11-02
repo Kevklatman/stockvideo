@@ -3,9 +3,7 @@
 /**
  * Converts a price to cents for Stripe
  */
-export function toCents(price: number): number {
-    return Math.round(price * 100);
-  }
+
   
   /**
    * Converts cents to dollars
@@ -66,3 +64,6 @@ export function toCents(price: number): number {
     const fee = calculateStripeFee(price);
     return Math.round((price + fee) * 100) / 100;
   } 
+
+  export const toCents = (amount: number): number => Math.round(amount * 100);
+export const fromCents = (cents: number): number => cents / 100;

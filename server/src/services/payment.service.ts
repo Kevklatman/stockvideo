@@ -112,7 +112,7 @@ export class PaymentService {
 
         // Create Stripe PaymentIntent
         const paymentIntent = await stripe.paymentIntents.create({
-          amount: amountInCents,
+          amount: toCents(video.price), // Convert to cents for Stripe
           currency: 'usd',
           metadata: {
             purchaseId: savedPurchase.id,
@@ -140,8 +140,8 @@ export class PaymentService {
         );
 
         return {
-          clientSecret: paymentIntent.client_secret,
-          amount: video.price,
+          clientSecret: paymentIntent.client_secret!,
+          amount: video.price, // Return in dollars
           currency: 'usd'
         };
       } finally {
