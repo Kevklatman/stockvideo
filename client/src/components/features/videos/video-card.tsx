@@ -96,16 +96,10 @@ export function VideoCard({
 const handlePurchaseSuccess = async () => {
   setIsPurchasing(true);
   try {
-    const response = await fetch(`/api/videos/${id}/verify-purchase`, {
-      method: 'POST',
+    const response = await fetch(`/api/payments/verify/${id}`, {
       headers: {
-        'Content-Type': 'application/json',
         'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-      },
-      body: JSON.stringify({
-        videoId: id,
-        purchaseId: localStorage.getItem(`purchase_${id}`), // Add this if you're storing the purchaseId
-      })
+      }
     });
 
     if (!response.ok) {
@@ -127,7 +121,6 @@ const handlePurchaseSuccess = async () => {
     setIsPurchasing(false);
   }
 };
-
   return (
     <div className="rounded-lg overflow-hidden shadow-lg bg-black">
       <div 
