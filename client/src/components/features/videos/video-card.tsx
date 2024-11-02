@@ -91,24 +91,44 @@ export function VideoCard({
     setIsPlaying(false);
   };
 
-  const handlePurchaseSuccess = async (paymentIntentId: string) => {
-    setIsPurchasing(true);
-    try {
-      const result = await verifyPayment(paymentIntentId);
-      
-      if (result && result.verified) {
-        setLocalPurchased(true);
-        setShowPayment(false);
-      } else {
-        throw new Error('Purchase not verified');
-      }
-    } catch (error) {
-      console.error('Error verifying purchase:', error);
-      alert('Error verifying purchase. Please contact support.');
-    } finally {
-      setIsPurchasing(false);
+// src/components/features/videos/video-card.tsx
+// Update the handlePurchaseSuccess function:
+
+const handlePurchaseSuccess = async () => {
+  setIsPurchasing(true);
+  try {
+    const response = await fetch(`/api/videos/${id}/verify-purchase`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+      },
+      body: JSON.stringify({
+        videoId: id,
+        purchaseId: localStorage.getItem(`purchase_${id}`), // Add this if you're storing the purchaseId
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Failed to verify purchase');
     }
-  };
+
+    const data = await response.json();
+    if (data.verified) {
+      setLocalPurchased(true);
+      setShowPayment(false);
+    } else {
+      throw new Error('Purchase not verified');
+    }
+  } catch (error) {
+    console.error('Error verifying purchase:', error);
+    alert('Error verifying purchase. Please contact support.');
+  } finally {
+    setIsPurchasing(false);
+  }
+};
+
   return (
     <div className="rounded-lg overflow-hidden shadow-lg bg-black">
       <div 
@@ -228,13 +248,16 @@ export function VideoCard({
       </div>
       
       {showPayment && (
-  <PaymentModal
-    videoId={id}
-    price={numericPrice}
-    onClose={() => setShowPayment(false)}
-    onSuccess={handlePurchaseSuccess}
-    isLoading={isPurchasing}
-  />
+        <PaymentModal
+          videoId={id}
+          price={numericPrice}
+          onClose={() => {
+            setShowPayment(false);
+            setIsPurchasing(false);
+          }}
+          onSuccess={handlePurchaseSuccess}
+          isLoading={isPurchasing}
+        />
       )}
     </div>
   );
