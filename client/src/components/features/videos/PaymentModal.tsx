@@ -25,42 +25,51 @@ const PaymentForm = ({ videoId, price, onSuccess, onClose, isLoading }: PaymentM
   const { createPaymentIntent, error: paymentError } = usePayment();
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-    const handleSubmit = async (event: React.FormEvent) => {
-      event.preventDefault();
-    
-      if (!stripe || !elements) {
-        return;
-      }
-    
-      setProcessing(true);
+  useEffect(() => {
+    return () => {
+      setSubmitting(false);
+      setProcessing(false);
       setError(null);
-    
-      try {
-        // createPaymentIntent now returns PaymentIntentResponse directly
-        const { clientSecret } = await createPaymentIntent(videoId);
-    
-        const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(
-          clientSecret,
-          {
-            payment_method: {
-              card: elements.getElement(CardElement)!,
-            },
-          }
-        );
-    
-        if (stripeError) {
-          setError(stripeError.message || 'Payment failed');
-        } else if (paymentIntent.status === 'succeeded') {
-          onSuccess();
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Payment failed');
-      } finally {
-        setProcessing(false);
-      }
     };
+  }, []);
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     
+    if (!stripe || !elements || submitting) {
+      return;
+    }
+    
+    setSubmitting(true);
+    setProcessing(true);
+    setError(null);
+    
+    try {
+      const { clientSecret } = await createPaymentIntent(videoId);
+      
+      const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(
+        clientSecret,
+        {
+          payment_method: {
+            card: elements.getElement(CardElement)!,
+          },
+        }
+      );
+  
+      if (stripeError) {
+        setError(stripeError.message || 'Payment failed');
+      } else if (paymentIntent.status === 'succeeded') {
+        onSuccess();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Payment failed');
+    } finally {
+      setProcessing(false);
+      setSubmitting(false);
+    }
+  };
 
   return (
     <form onSubmit={handleSubmit} className="w-full space-y-4">
@@ -108,11 +117,11 @@ const PaymentForm = ({ videoId, price, onSuccess, onClose, isLoading }: PaymentM
 
         <button
           type="submit"
-          disabled={!stripe || processing || isLoading}
+          disabled={!stripe || processing || isLoading || submitting}
           className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 
                    transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {processing || isLoading ? (
+          {(processing || isLoading || submitting) ? (
             <div className="flex items-center justify-center space-x-2">
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               <span>Processing...</span>
@@ -131,7 +140,6 @@ const PaymentForm = ({ videoId, price, onSuccess, onClose, isLoading }: PaymentM
 };
 
 export function PaymentModal(props: PaymentModalProps) {
-  // Trap focus inside modal for accessibility
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {

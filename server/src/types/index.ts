@@ -126,13 +126,6 @@ export interface PaymentResult {
 }
 
 // Component Props Types
-export interface PaymentModalProps {
-  videoId: string;
-  price: number;          // in dollars
-  onClose: () => void;
-  onSuccess: () => void;
-  isLoading?: boolean;
-}
 
 // Video Processing Types
 export interface VideoPreset {

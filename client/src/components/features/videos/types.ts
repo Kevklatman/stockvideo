@@ -1,12 +1,5 @@
 // src/components/features/videos/types.ts
-export interface PaymentModalProps {
-    videoId: string;
-    price: number;
-    onClose: () => void;
-    onSuccess: () => void;
-    isLoading?: boolean;
-  }
-  
+
   export interface VideoCardProps {
     id: string;
     title: string;
