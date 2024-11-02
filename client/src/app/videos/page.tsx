@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/providers/auth-provider';
 import { VideoCard } from '@/components/features/videos/video-card';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 
 interface ApiVideo {
   id: string;
@@ -48,91 +49,106 @@ interface Video {
   purchased?: boolean;
 }
 
+interface FetchState {
+  loading: boolean;
+  error: string | null;
+  data: Video[];
+}
+
 export default function VideosPage() {
-  const [videos, setVideos] = useState<Video[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [fetchState, setFetchState] = useState<FetchState>({
+    loading: true,
+    error: null,
+    data: []
+  });
   const { user, isInitialized } = useAuth();
 
-  useEffect(() => {
-    if (!isInitialized) {
-      return;
-    }
+  const transformVideos = useCallback((
+    apiVideos: ApiVideo[],
+    purchasedVideoIds: string[],
+    currentUserId?: string
+  ): Video[] => {
+    return apiVideos.map(video => ({
+      id: video.id,
+      title: video.title,
+      thumbnailUrl: video.previewUrl || '',
+      videoUrl: video.fullVideoUrl,
+      authorName: video.user.email.split('@')[0],
+      price: video.price,
+      description: video.description,
+      createdAt: new Date(video.createdAt),
+      authorId: video.userId,
+      likes: video.likes || 0,
+      duration: video.duration || 0,
+      views: video.views || 0,
+      purchased: video.userId === currentUserId || purchasedVideoIds.includes(video.id)
+    }));
+  }, []);
 
-    const fetchVideos = async () => {
-      try {
-        const videosResponse = await fetch('/api/videos');
-        if (!videosResponse.ok) {
-          throw new Error('Failed to fetch videos');
-        }
-        const videosData = await videosResponse.json();
+  const fetchVideos = useCallback(async () => {
+    try {
+      const [videosResponse, purchasedResponse] = await Promise.all([
+        fetch('/api/videos'),
+        user ? fetch('/api/purchases') : Promise.resolve(null)
+      ]);
 
-        let purchasedVideos: string[] = [];
-        if (user) {
-          const purchasedResponse = await fetch('/api/purchases');
-          if (purchasedResponse.ok) {
-            const purchasedData: Purchase[] = await purchasedResponse.json();
-            purchasedVideos = purchasedData.map((purchase) => purchase.videoId);
-          }
-        }
-
-        const videoArray = Array.isArray(videosData) 
-          ? videosData 
-          : videosData.videos || videosData.data || [];
-
-        const transformedVideos = videoArray.map((video: ApiVideo) => ({
-          id: video.id,
-          title: video.title,
-          thumbnailUrl: video.previewUrl || '',
-          videoUrl: video.fullVideoUrl,
-          authorName: video.user.email.split('@')[0],
-          price: video.price,
-          description: video.description,
-          createdAt: new Date(video.createdAt),
-          authorId: video.userId,
-          likes: video.likes || 0,
-          duration: video.duration || 0,
-          views: video.views || 0,
-          purchased: video.userId === user?.id || purchasedVideos.includes(video.id)
-        }));
-
-        setVideos(transformedVideos);
-      } catch (err) {
-        console.error('Error fetching videos:', err);
-        setError(err instanceof Error ? err.message : 'An error occurred');
-      } finally {
-        setLoading(false);
+      if (!videosResponse.ok) {
+        throw new Error('Failed to fetch videos');
       }
-    };
 
+      const videosData = await videosResponse.json();
+      const purchasedData = purchasedResponse?.ok 
+        ? await purchasedResponse.json() 
+        : [];
+
+      const purchasedVideoIds = (purchasedData as Purchase[]).map(p => p.videoId);
+      const videoArray = Array.isArray(videosData) 
+        ? videosData 
+        : videosData.videos || videosData.data || [];
+
+      const transformedVideos = transformVideos(videoArray, purchasedVideoIds, user?.id);
+
+      setFetchState({
+        loading: false,
+        error: null,
+        data: transformedVideos
+      });
+    } catch (err) {
+      console.error('Error fetching videos:', err);
+      setFetchState(state => ({
+        ...state,
+        loading: false,
+        error: err instanceof Error ? err.message : 'An error occurred'
+      }));
+    }
+  }, [user, transformVideos]);
+
+  useEffect(() => {
+    if (!isInitialized) return;
     fetchVideos();
-  }, [user, isInitialized]);
+  }, [isInitialized, fetchVideos]);
 
-  if (!isInitialized) {
+  if (!isInitialized || fetchState.loading) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <div className="text-center text-gray-500">
-          Loading...
+        <div className="flex justify-center items-center min-h-[200px]">
+          <LoadingSpinner />
         </div>
       </div>
     );
   }
 
-  if (error) {
+  if (fetchState.error) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <div className="text-center text-red-500">
-          Error: {error}
-        </div>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center text-gray-500">
-          Loading videos...
+        <div className="text-center bg-red-50 p-4 rounded-lg">
+          <p className="text-red-600">Error: {fetchState.error}</p>
+          <button 
+            onClick={fetchVideos}
+            className="mt-4 px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+          >
+            Try Again
+          </button>
         </div>
       </div>
     );
@@ -140,32 +156,25 @@ export default function VideosPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8">Videos</h1>
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold">Videos</h1>
+        <div className="flex gap-4">
+          {/* Add filter/sort controls here if needed */}
+        </div>
+      </div>
       
-      {videos.length > 0 ? (
+      {fetchState.data.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {videos.map((video) => (
+          {fetchState.data.map((video) => (
             <VideoCard
               key={video.id}
-              id={video.id}
-              title={video.title}
-              thumbnailUrl={video.thumbnailUrl}
-              videoUrl={video.videoUrl}
-              authorName={video.authorName}
-              price={video.price}
-              description={video.description}
-              createdAt={video.createdAt}
-              authorId={video.authorId}
-              likes={video.likes}
-              duration={video.duration}
-              views={video.views}
-              purchased={video.purchased}
+              {...video}
             />
           ))}
         </div>
       ) : (
-        <div className="text-center text-gray-500 mt-8">
-          No videos found
+        <div className="text-center bg-gray-50 p-8 rounded-lg">
+          <p className="text-gray-600">No videos available</p>
         </div>
       )}
     </div>

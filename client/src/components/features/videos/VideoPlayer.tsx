@@ -128,6 +128,11 @@ export default function VideoPlayer({
   }, [volume, isMuted]);
 
   const togglePlay = async () => {
+    if (previewMode && !isPurchased) {
+      if (onPurchaseClick) onPurchaseClick();
+      return;
+    }
+    
     if (videoRef.current) {
       try {
         if (isPlaying) {

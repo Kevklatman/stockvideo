@@ -83,17 +83,19 @@ export function VideoCard({
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
       >
-        <video
-          ref={videoRef}
-          className={`w-full h-full object-cover ${!isPlaying ? 'hidden' : ''}`}
-          controls
-          src={videoUrl}
-          onEnded={handleVideoEnd}
-          onPause={handleVideoPause}
-          onPlay={handleVideoPlay}
-        >
-          Your browser does not support the video tag.
-        </video>
+<video
+  ref={videoRef}
+  className="w-full h-full object-cover"
+  controls
+  src={videoUrl}
+  poster={thumbnailUrl}
+  preload="metadata"
+  onEnded={handleVideoEnd}
+  onPause={handleVideoPause}
+  onPlay={handleVideoPlay}
+>
+  Your browser does not support the video tag.
+</video>
 
         {!isPlaying && (
           <div 
