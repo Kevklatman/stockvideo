@@ -57,6 +57,110 @@ export class PaymentService {
       // Initialize Stripe
       const stripe = this.initStripe();
   
+      // Verify video exists and get price
+      console.log('Finding video:', videoId);
+      const video = await this.videoRepository.findOne({
+        where: { id: videoId },
+        select: ['id', 'price', 'title'] // Add specific fields you need
+      });
+  
+      console.log('Video lookup result:', video);
+  
+      if (!video) {
+        console.error('Video not found:', videoId);
+        throw new PaymentError('Video not found');
+      }
+  
+      if (typeof video.price !== 'number' || video.price <= 0) {
+        console.error('Invalid video price:', video.price);
+        throw new PaymentError('Invalid video price');
+      }
+  
+      // Check if video is already purchased
+      console.log('Checking existing purchase');
+      const existingPurchase = await this.purchaseRepository.findOne({
+        where: { 
+          userId, 
+          videoId,
+          status: 'completed'
+        }
+      });
+  
+      if (existingPurchase) {
+        console.error('Video already purchased:', { userId, videoId });
+        throw new PaymentError('Video already purchased');
+      }
+  
+      // Acquire lock to prevent duplicate purchases
+      console.log('Acquiring purchase lock');
+      const lockToken = await this.acquirePurchaseLock(userId, videoId);
+      if (!lockToken) {
+        console.error('Failed to acquire purchase lock:', { userId, videoId });
+        throw new PaymentError('Purchase already in progress');
+      }
+  
+      try {
+        // Convert price to cents for Stripe
+        const amountInCents = Math.round(video.price * 100);
+        console.log('Creating Stripe payment intent:', { 
+          amount: amountInCents, 
+          currency: 'usd',
+          videoId,
+          userId
+        });
+  
+        // Create Stripe PaymentIntent
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: amountInCents,
+          currency: 'usd',
+          metadata: {
+            videoId,
+            userId
+          }
+        });
+  
+        console.log('Payment intent created:', { 
+          intentId: paymentIntent.id, 
+          status: paymentIntent.status,
+          hasClientSecret: !!paymentIntent.client_secret
+        });
+  
+        if (!paymentIntent.client_secret) {
+          throw new PaymentError('Failed to generate client secret');
+        }
+  
+        // Create a new purchase record
+        console.log('Creating purchase record');
+        const purchase = this.purchaseRepository.create({
+          userId,
+          videoId,
+          amount: video.price,
+          status: 'pending',
+          stripePaymentId: paymentIntent.id
+        });
+  
+        console.log('Saving purchase record');
+        const savedPurchase = await this.purchaseRepository.save(purchase);
+        console.log('Purchase record created:', savedPurchase);
+  
+        // Cache payment intent details
+        await this.cachePaymentIntent(
+          paymentIntent.id,
+          savedPurchase.id,
+          videoId,
+          userId
+        );
+  
+        return {
+          clientSecret: paymentIntent.client_secret,
+          amount: video.price,
+          currency: 'usd'
+        };
+      } finally {
+        // Release lock regardless of outcome
+        await this.releasePurchaseLock(userId, videoId, lockToken);
+      }
+  
       // Start transaction for data consistency
       return await AppDataSource.transaction(async transactionalEntityManager => {
         // Verify video exists and get price with pessimistic lock
@@ -191,13 +295,16 @@ export class PaymentService {
         } : 'Unknown error'
       });
   
+  
       if (error instanceof PaymentError) {
         throw error;
       }
   
+  
       if (error instanceof Stripe.errors.StripeError) {
         throw new PaymentError(`Stripe error: ${error.message}`);
       }
+  
   
       throw new PaymentError(
         'Failed to create payment intent: ' + 

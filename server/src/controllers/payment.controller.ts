@@ -122,7 +122,19 @@ static async verifyPayment(req: AuthRequest, res: Response) {
       });
     }
 
-    const result = await PaymentService.verifyPayment(userId, paymentIntentId);
+      if (!videoId) {
+        return res.status(400).json({
+          status: 'error',
+          code: 'MISSING_VIDEO_ID',
+          message: 'Video ID is required'
+        });
+      }
+
+      console.log('Verifying payment:', { userId, videoId });
+
+      const verified = await PaymentService.verifyPurchase(userId, videoId, purchaseId);
+
+      console.log('Payment verification result:', { verified });
 
     return res.json({
       status: 'success',
