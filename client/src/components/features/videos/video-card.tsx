@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useAuth } from '@/providers/auth-provider';
+import { Play, Lock } from 'lucide-react';
 
 interface VideoCardProps {
   id: string;
@@ -32,6 +33,8 @@ export function VideoCard({
   purchased = false,
 }: VideoCardProps) {
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isHovering, setIsHovering] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const { user, isInitialized } = useAuth();
 
   const isOwner = user?.id === authorId;
@@ -45,10 +48,8 @@ export function VideoCard({
     });
   };
 
-  const handleVideoClick = () => {
-    if (!isInitialized) {
-      return; // Wait for auth to initialize
-    }
+  const handleVideoClick = async () => {
+    if (!isInitialized) return;
 
     if (!user) {
       alert('Please sign in to watch this video');
@@ -63,49 +64,64 @@ export function VideoCard({
     setIsPlaying(true);
   };
 
+  const handleVideoEnd = () => {
+    setIsPlaying(false);
+  };
+
+  const handleVideoPause = () => {
+    setIsPlaying(false);
+  };
+
+  const handleVideoPlay = () => {
+    setIsPlaying(true);
+  };
+
   return (
-    <div className="rounded-lg overflow-hidden shadow-lg bg-white">
-      <div className="relative aspect-video bg-gray-100">
-        {isPlaying && canPlayVideo ? (
-          <video
-            className="w-full h-full object-cover"
-            controls
-            src={videoUrl}
-          >
-            Your browser does not support the video tag.
-          </video>
-        ) : (
+    <div className="rounded-lg overflow-hidden shadow-lg bg-black">
+      <div 
+        className="relative aspect-video bg-gray-900"
+        onMouseEnter={() => setIsHovering(true)}
+        onMouseLeave={() => setIsHovering(false)}
+      >
+        <video
+          ref={videoRef}
+          className={`w-full h-full object-cover ${!isPlaying ? 'hidden' : ''}`}
+          controls
+          src={videoUrl}
+          onEnded={handleVideoEnd}
+          onPause={handleVideoPause}
+          onPlay={handleVideoPlay}
+        >
+          Your browser does not support the video tag.
+        </video>
+
+        {!isPlaying && (
           <div 
             onClick={handleVideoClick} 
-            className="cursor-pointer w-full h-full relative"
+            className="cursor-pointer w-full h-full relative group"
           >
-            {thumbnailUrl ? (
+            <div className="absolute inset-0 bg-black/40 group-hover:bg-black/60 transition-colors" />
+            
+            {thumbnailUrl && (
               <img
                 src={thumbnailUrl}
                 alt={title}
                 className="w-full h-full object-cover"
               />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-gray-200">
-                <span className="text-gray-400">
-                  {!isInitialized ? 'Loading...' : 
-                    canPlayVideo ? 'Click to play video' : 'Purchase to watch'}
-                </span>
-              </div>
             )}
+
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="bg-black bg-opacity-50 rounded-full p-4">
+              <div className={`rounded-full p-4 transition-transform duration-300 ${
+                isHovering ? 'scale-110' : 'scale-100'
+              }`}>
                 {canPlayVideo ? (
-                  <svg
-                    className="w-8 h-8 text-white"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-                  </svg>
+                  <Play size={48} className="text-white" />
                 ) : (
-                  <div className="text-white text-sm font-medium px-3 py-1">
-                    ${price}
+                  <div className="flex flex-col items-center gap-2">
+                    <Lock size={32} className="text-white" />
+                    <div className="text-white text-lg font-medium px-4 py-2 bg-blue-600 rounded">
+                      ${price}
+                    </div>
                   </div>
                 )}
               </div>
@@ -113,36 +129,36 @@ export function VideoCard({
           </div>
         )}
       </div>
-      <div className="p-4">
+
+      <div className="p-4 text-white">
         <h3 className="font-semibold text-lg mb-2">{title}</h3>
-        <p className="text-gray-600 text-sm mb-2">{description}</p>
-        <div className="flex items-center justify-between text-sm text-gray-500">
+        <p className="text-gray-300 text-sm mb-2">{description}</p>
+        <div className="flex items-center justify-between text-sm text-gray-400">
           <span>{authorName}</span>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-4">
             {user && !canPlayVideo && (
               <button 
-                className="text-blue-500 hover:text-blue-600 cursor-pointer"
+                className="text-blue-400 hover:text-blue-300 transition-colors"
                 onClick={() => {
-                  // Implement purchase functionality
                   console.log('Purchase video:', id);
                 }}
               >
                 Purchase
               </button>
             )}
-            <span>${price}</span>
+            {!isOwner && <span>${price}</span>}
           </div>
         </div>
-        <div className="text-xs text-gray-400 mt-2">
+        <div className="text-xs text-gray-500 mt-2">
           {formatDate(createdAt)}
         </div>
         {isOwner && (
-          <div className="mt-2 text-xs text-green-500">
+          <div className="mt-2 text-xs text-green-400">
             You own this video
           </div>
         )}
         {purchased && !isOwner && (
-          <div className="mt-2 text-xs text-blue-500">
+          <div className="mt-2 text-xs text-blue-400">
             Purchased
           </div>
         )}
