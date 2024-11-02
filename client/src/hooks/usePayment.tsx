@@ -4,6 +4,12 @@ import { loadStripe } from '@stripe/stripe-js';
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
+interface PaymentIntentResponse {
+  clientSecret: string;
+  amount: number;
+  currency: string;
+}
+
 export function usePayment() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -13,9 +19,15 @@ export function usePayment() {
     setError(null);
 
     try {
-      const response = await api.post<{ data: { clientSecret: string } }>('/api/payments/create-intent', {
+      // Response will now properly match the server's structure
+      const response = await api.post<{ status: string; data: PaymentIntentResponse }>('/api/payments/create-intent', {
         videoId
       });
+
+      // Safely access the nested clientSecret
+      if (!response?.data?.clientSecret) {
+        throw new Error('Invalid payment intent response');
+      }
 
       return response.data;
     } catch (err) {
