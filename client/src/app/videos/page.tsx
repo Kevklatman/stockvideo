@@ -1,7 +1,7 @@
-// src/app/videos/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useAuth } from '@/providers/auth-provider';
 import { VideoCard } from '@/components/features/videos/video-card';
 
 interface ApiVideo {
@@ -14,11 +14,22 @@ interface ApiVideo {
   createdAt: string;
   updatedAt: string;
   userId: string;
+  likes?: number;
+  duration?: number;
+  views?: number;
   user: {
     email: string;
     id: string;
     role: string;
   };
+}
+
+interface Purchase {
+  id: string;
+  videoId: string;
+  userId: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface Video {
@@ -27,50 +38,62 @@ interface Video {
   thumbnailUrl: string;
   videoUrl: string;
   authorName: string;
-  _id?: string;
-  author?: {
-    name: string;
-  };
+  price: string;
+  description: string;
+  createdAt: Date;
+  authorId: string;
   likes: number;
   duration: number;
   views: number;
+  purchased?: boolean;
 }
 
 export default function VideosPage() {
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { user, isInitialized } = useAuth();
 
   useEffect(() => {
+    if (!isInitialized) {
+      return;
+    }
+
     const fetchVideos = async () => {
       try {
-        const response = await fetch('/api/videos');
-        if (!response.ok) {
+        const videosResponse = await fetch('/api/videos');
+        if (!videosResponse.ok) {
           throw new Error('Failed to fetch videos');
         }
-        const data = await response.json();
-        
-        console.log('API Response:', data);
+        const videosData = await videosResponse.json();
 
-        const videoArray = Array.isArray(data) 
-          ? data 
-          : data.videos || data.data || [];
+        let purchasedVideos: string[] = [];
+        if (user) {
+          const purchasedResponse = await fetch('/api/purchases');
+          if (purchasedResponse.ok) {
+            const purchasedData: Purchase[] = await purchasedResponse.json();
+            purchasedVideos = purchasedData.map((purchase) => purchase.videoId);
+          }
+        }
+
+        const videoArray = Array.isArray(videosData) 
+          ? videosData 
+          : videosData.videos || videosData.data || [];
 
         const transformedVideos = videoArray.map((video: ApiVideo) => ({
           id: video.id,
           title: video.title,
           thumbnailUrl: video.previewUrl || '',
           videoUrl: video.fullVideoUrl,
-          authorName: video.user.email.split('@')[0], // Using email username as author name
-          author: {
-            name: video.user.email.split('@')[0]
-          },
-          likes: 0, // Default values since these aren't in the API
-          duration: 0,
-          views: 0,
+          authorName: video.user.email.split('@')[0],
           price: video.price,
           description: video.description,
           createdAt: new Date(video.createdAt),
+          authorId: video.userId,
+          likes: video.likes || 0,
+          duration: video.duration || 0,
+          views: video.views || 0,
+          purchased: video.userId === user?.id || purchasedVideos.includes(video.id)
         }));
 
         setVideos(transformedVideos);
@@ -83,20 +106,34 @@ export default function VideosPage() {
     };
 
     fetchVideos();
-  }, []);
+  }, [user, isInitialized]);
 
-  if (loading) {
+  if (!isInitialized) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+      <div className="container mx-auto px-4 py-8">
+        <div className="text-center text-gray-500">
+          Loading...
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-red-500">Error: {error}</div>
+      <div className="container mx-auto px-4 py-8">
+        <div className="text-center text-red-500">
+          Error: {error}
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="text-center text-gray-500">
+          Loading videos...
+        </div>
       </div>
     );
   }
@@ -115,13 +152,14 @@ export default function VideosPage() {
               thumbnailUrl={video.thumbnailUrl}
               videoUrl={video.videoUrl}
               authorName={video.authorName}
-              likes={video.likes}
-              duration={video.duration}
-              views={video.views}
               price={video.price}
               description={video.description}
               createdAt={video.createdAt}
-
+              authorId={video.authorId}
+              likes={video.likes}
+              duration={video.duration}
+              views={video.views}
+              purchased={video.purchased}
             />
           ))}
         </div>
