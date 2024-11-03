@@ -12,5 +12,7 @@ router.post('/create-intent', PaymentController.createPaymentIntent);
 
 // Get purchase history
 router.get('/history', PaymentController.getPurchaseHistory);
+router.get('/verify/:paymentIntentId', PaymentController.verifyPayment);
+
 
 export { router as paymentRouter };

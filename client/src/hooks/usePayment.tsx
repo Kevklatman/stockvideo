@@ -6,16 +6,13 @@ interface PaymentIntentResponse {
   paymentIntentId: string;
   amount: number;
   currency: string;
-  purchaseId:string;
+  purchaseId: string;
 }
 
 interface VerificationResult {
   verified: boolean;
-  purchase?: {
-    id: string;
-    status: string;
-    completedAt?: string;
-  };
+  purchaseId?: string;
+  purchaseDate?: string;
 }
 
 export function usePayment() {
@@ -62,30 +59,31 @@ export function usePayment() {
     }
   }, []);
 
-// usePayment.tsx
-const verifyPayment = useCallback(async (paymentIntentId: string): Promise<VerificationResult> => {
-  try {
-    const response = await fetch(`/api/payments/verify/${paymentIntentId}`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-        'Content-Type': 'application/json'
+  const verifyPayment = useCallback(async (paymentIntentId: string): Promise<VerificationResult> => {
+    try {
+      const response = await fetch(`/api/payments/verify/${paymentIntentId}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to verify payment');
       }
-    });
 
-    if (!response.ok) {
-      throw new Error('Failed to verify payment');
+      return {
+        verified: data.data?.verified || false,
+        purchaseId: data.data?.purchase?.id,
+        purchaseDate: data.data?.purchase?.completedAt
+      };
+    } catch (err) {
+      console.error('Verification error:', err);
+      throw err; // Let the calling component handle the error
     }
-
-    const data = await response.json();
-    return {
-      verified: data.data?.verified || false,
-      purchase: data.data?.purchase
-    };
-  } catch (err) {
-    console.error('Verification error:', err);
-    return { verified: false };
-  }
-}, []);
+  }, []);
 
   const clearError = useCallback(() => {
     setError(null);
