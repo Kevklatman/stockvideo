@@ -35,6 +35,7 @@ export class PaymentService {
     return this.stripe;
   }
 
+
   static async createPaymentIntent(
     userId: string, 
     videoId: string, 
@@ -411,6 +412,39 @@ protected static async fulfillPayment(
    * Handles Stripe webhook events
    */
 
+  private static readonly ALLOWED_WEBHOOK_EVENTS = [
+    'payment_intent.succeeded',
+    'payment_intent.payment_failed',
+    'payment_intent.processing',
+    'charge.succeeded',
+    'charge.updated',
+    'payment_intent.created'
+  ] as const;
+
+  private static isValidWebhookEvent(
+    eventType: string
+  ): eventType is typeof PaymentService.ALLOWED_WEBHOOK_EVENTS[number] {
+    return this.ALLOWED_WEBHOOK_EVENTS.includes(eventType as any);
+  }
+
+  private static validateWebhookEvent(event: Stripe.Event): void {
+    // Validate event type
+    if (!this.isValidWebhookEvent(event.type)) {
+      throw new Error(`Unsupported webhook event type: ${event.type}`);
+    }
+
+    // Validate event data structure
+    if (!event.data?.object) {
+      throw new Error('Invalid event data structure');
+    }
+
+    // For payment_intent events, validate the payment intent object
+    if (event.type.startsWith('payment_intent.') && 
+        (event.data.object as Stripe.PaymentIntent).object !== 'payment_intent') {
+      throw new Error('Invalid payment intent data');
+    }
+  }
+
   static async handleWebhook(event: Stripe.Event): Promise<void> {
     const eventLogger = this.logger.child({ 
       eventId: event.id,
@@ -418,6 +452,9 @@ protected static async fulfillPayment(
     });
   
     try {
+      // Validate event before processing
+      this.validateWebhookEvent(event);
+
       eventLogger.info('Processing webhook event', {
         type: event.type,
         id: event.id,
@@ -433,13 +470,11 @@ protected static async fulfillPayment(
             amount: paymentIntent.amount
           });
   
-          // Verify metadata
           if (!this.validatePaymentMetadata(paymentIntent.metadata)) {
             eventLogger.error('Invalid payment metadata', { metadata: paymentIntent.metadata });
             return;
           }
   
-          // Try to acquire fulfillment lock
           const lockToken = await this.acquireFulfillmentLock(paymentIntent.id);
           if (!lockToken) {
             eventLogger.info('Fulfillment already in progress', { paymentIntentId: paymentIntent.id });
@@ -447,7 +482,6 @@ protected static async fulfillPayment(
           }
   
           try {
-            // Check if already fulfilled
             if (await this.isFulfillmentComplete(paymentIntent.id)) {
               eventLogger.info('Payment already fulfilled', { paymentIntentId: paymentIntent.id });
               return;
@@ -466,7 +500,6 @@ protected static async fulfillPayment(
                 throw new PaymentError(`Purchase not found: ${paymentIntent.metadata.purchaseId}`);
               }
   
-              // Validate purchase state
               if (purchase.status === 'completed') {
                 eventLogger.info('Purchase already completed', { purchaseId: purchase.id });
                 return;
@@ -476,15 +509,12 @@ protected static async fulfillPayment(
                 throw new PaymentError('Purchase already associated with different payment');
               }
   
-              // Update purchase
               purchase.status = 'completed';
               purchase.stripePaymentId = paymentIntent.id;
               purchase.completedAt = new Date();
               purchase.amount = this.fromCents(paymentIntent.amount);
   
               await transactionalEntityManager.save(purchase);
-              
-              // Cache fulfillment status
               await this.markFulfillmentComplete(paymentIntent.id, purchase.id);
               
               eventLogger.info('Purchase successfully completed', {
@@ -493,11 +523,9 @@ protected static async fulfillPayment(
                 status: purchase.status
               });
   
-              // Clear any related caches
               await this.clearPaymentCache(paymentIntent.id);
             });
           } finally {
-            // Always release the lock
             await this.releaseFulfillmentLock(paymentIntent.id, lockToken);
           }
           break;
@@ -521,23 +549,19 @@ protected static async fulfillPayment(
                 .setLock('pessimistic_write')
                 .getOne();
   
-              if (purchase) {
-                // Only update if not already completed
-                if (purchase.status !== 'completed') {
-                  purchase.status = 'failed';
-                  purchase.stripePaymentId = paymentIntent.id;
-                  await transactionalEntityManager.save(purchase);
-                  
-                  eventLogger.info('Purchase marked as failed', { 
-                    purchaseId: purchase.id,
-                    paymentIntentId: paymentIntent.id
-                  });
-                }
+              if (purchase && purchase.status !== 'completed') {
+                purchase.status = 'failed';
+                purchase.stripePaymentId = paymentIntent.id;
+                await transactionalEntityManager.save(purchase);
+                
+                eventLogger.info('Purchase marked as failed', { 
+                  purchaseId: purchase.id,
+                  paymentIntentId: paymentIntent.id
+                });
               }
             });
           }
   
-          // Clear any cached data
           await this.clearPaymentCache(paymentIntent.id);
           break;
         }
@@ -553,14 +577,12 @@ protected static async fulfillPayment(
   
         case 'charge.succeeded':
         case 'charge.updated':
-        case 'payment_intent.created':
-          eventLogger.info(`Processing ${event.type}`, {
+        case 'payment_intent.created': {
+          eventLogger.info(`Recorded ${event.type}`, {
             id: event.data.object.id
           });
           break;
-  
-        default:
-          eventLogger.warn(`Unhandled event type: ${event.type}`);
+        }
       }
     } catch (error) {
       eventLogger.error('Error processing webhook', { 
@@ -571,7 +593,6 @@ protected static async fulfillPayment(
         } : error 
       });
       
-      // Re-throw error to ensure webhook endpoint returns error status
       throw error;
     }
   }
