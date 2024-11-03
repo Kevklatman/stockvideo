@@ -73,27 +73,26 @@ app.use(security.securityHeaders);
 // Stripe webhook endpoint - must be before body parsing middleware
 // In your webhook route handler
 // This needs to be BEFORE any body parsing middleware
+// This needs to be BEFORE any other middleware that parses the body
 app.post('/api/payments/webhook',
-  (req, res, next) => {
-    const sig = req.headers['stripe-signature'];
-    console.log('Webhook received:', {
-      hasSignature: !!sig,
-      bodyType: typeof req.body,
-      bodyLength: req.body?.length,
-    });
-    next();
-  },
   express.raw({type: 'application/json'}),
   async (req, res) => {
     try {
       const sig = req.headers['stripe-signature'];
-      console.log('Processing webhook with signature:', sig);
+      console.log('Webhook received:', {
+        hasSignature: !!sig,
+        contentType: req.headers['content-type'],
+        bodyLength: req.body?.length
+      });
 
       if (!sig) {
-        console.error('No stripe signature in webhook request');
-        return res.status(400).json({
-          error: 'Missing stripe signature'
-        });
+        console.error('No Stripe signature found');
+        return res.status(400).json({ error: 'No Stripe signature found' });
+      }
+
+      if (!process.env.STRIPE_WEBHOOK_SECRET) {
+        console.error('No webhook secret configured');
+        return res.status(500).json({ error: 'Webhook secret not configured' });
       }
 
       const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -103,19 +102,25 @@ app.post('/api/payments/webhook',
       const event = stripe.webhooks.constructEvent(
         req.body,
         sig,
-        process.env.STRIPE_WEBHOOK_SECRET!
+        process.env.STRIPE_WEBHOOK_SECRET
       );
 
-      console.log('Webhook event constructed:', {
+      console.log('Webhook event:', {
         type: event.type,
-        id: event.id
+        id: event.id,
+        data: {
+          object: {
+            id: (event.data.object as { id: string }).id,
+            status: 'status' in event.data.object ? event.data.object.status : undefined
+          }
+        }
       });
 
       await PaymentService.handleWebhook(event);
       
-      res.json({received: true});
+      res.json({ received: true });
     } catch (err) {
-      console.error('Webhook Error:', err);
+      console.error('Webhook error:', err);
       return res.status(400).json({
         error: err instanceof Error ? err.message : 'Unknown error'
       });
@@ -182,7 +187,7 @@ async function startServer() {
     await AppDataSource.initialize();
     console.log("Database connected");
     
-    // Add webhook verification
+    // Verify webhook configuration
     await PaymentService.verifyWebhookConfiguration();
     
     const PORT = process.env.PORT || 3001;
