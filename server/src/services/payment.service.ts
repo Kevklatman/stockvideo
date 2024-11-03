@@ -173,19 +173,35 @@ export class PaymentService {
   /**
    * Verifies if a user has purchased a video
    */
-  static async verifyPurchase(userId: string, videoId: string): Promise<boolean> {
+  static async verifyPurchase(userId: string, videoId: string): Promise<{ 
+    verified: boolean;
+    purchase?: Purchase;
+  }> {
     try {
+      console.log('Verifying purchase:', { userId, videoId });
+      
       const purchase = await this.purchaseRepository.findOne({
-        where: { 
-          userId, 
+        where: {
+          userId,
           videoId,
           status: 'completed'
         }
       });
-      return !!purchase;
+  
+      console.log('Purchase verification result:', {
+        found: !!purchase,
+        status: purchase?.status,
+        completedAt: purchase?.completedAt,
+        stripePaymentId: purchase?.stripePaymentId
+      });
+  
+      return {
+        verified: !!purchase,
+        purchase: purchase || undefined
+      };
     } catch (error) {
-      this.logger.error('Purchase verification failed:', error);
-      return false;
+      console.error('Purchase verification error:', error);
+      return { verified: false };
     }
   }
   /**
@@ -193,11 +209,20 @@ export class PaymentService {
    */
   static async handleWebhook(event: Stripe.Event): Promise<void> {
     try {
-      switch (event.type) {
+      console.log('Handling webhook event:', {
+        type: event.type,
+        id: event.id
+      });      switch (event.type) {
         case 'payment_intent.succeeded':
+          const paymentIntent = event.data.object as Stripe.PaymentIntent;
+          console.log('Processing successful payment:', {
+            id: paymentIntent.id,
+            metadata: paymentIntent.metadata
+          });
           await this.handleSuccessfulPayment(event.data.object as Stripe.PaymentIntent);
           break;
-
+          default:
+            console.log(`Unhandled event type: ${event.type}`);
         case 'payment_intent.payment_failed':
           await this.handleFailedPayment(event.data.object as Stripe.PaymentIntent);
           break;
@@ -332,26 +357,52 @@ export class PaymentService {
    * Private helper methods
    */
   private static async handleSuccessfulPayment(paymentIntent: Stripe.PaymentIntent): Promise<void> {
+    console.log('Processing successful payment:', {
+      paymentIntentId: paymentIntent.id,
+      metadata: paymentIntent.metadata,
+      amount: paymentIntent.amount,
+      status: paymentIntent.status
+    });
+  
     const { purchaseId } = paymentIntent.metadata;
     
     if (!purchaseId) {
+      console.error('Missing purchaseId in metadata:', paymentIntent);
       throw new PaymentError('Purchase ID not found in payment metadata');
     }
-
+  
     const purchase = await this.purchaseRepository.findOne({
       where: { id: purchaseId }
     });
-
+  
+    console.log('Found purchase record:', {
+      purchaseId,
+      found: !!purchase,
+      currentStatus: purchase?.status
+    });
+  
     if (!purchase) {
       throw new PaymentError('Purchase record not found');
     }
-
-    purchase.status = 'completed';
-    purchase.stripePaymentId = paymentIntent.id;
-    purchase.completedAt = new Date();
-    
-    await this.purchaseRepository.save(purchase);
-    await this.clearPaymentCache(paymentIntent.id);
+  
+    try {
+      purchase.status = 'completed';
+      purchase.stripePaymentId = paymentIntent.id;
+      purchase.completedAt = new Date();
+      
+      await this.purchaseRepository.save(purchase);
+      
+      console.log('Purchase status updated successfully:', {
+        purchaseId,
+        newStatus: 'completed',
+        stripePaymentId: paymentIntent.id
+      });
+  
+      await this.clearPaymentCache(paymentIntent.id);
+    } catch (error) {
+      console.error('Error updating purchase status:', error);
+      throw error;
+    }
   }
 
   private static async handleFailedPayment(paymentIntent: Stripe.PaymentIntent): Promise<void> {
@@ -458,4 +509,28 @@ export class PaymentService {
     const cacheKey = `payment_intent:${paymentIntentId}`;
     await redisClient.del(cacheKey);
   }
+
+  // Add this to payment.service.ts
+
+static async verifyWebhookConfiguration(): Promise<void> {
+  if (!process.env.STRIPE_WEBHOOK_SECRET) {
+    console.error('STRIPE_WEBHOOK_SECRET is not configured');
+  }
+
+  try {
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+      apiVersion: '2023-10-16'
+    });
+    
+    const webhooks = await stripe.webhookEndpoints.list();
+    console.log('Configured webhooks:', webhooks.data.map(hook => ({
+      url: hook.url,
+      enabled_events: hook.enabled_events
+    })));
+  } catch (error) {
+    console.error('Error checking webhook configuration:', error);
+  }
+}
+
+// Call this when your server starts
 }

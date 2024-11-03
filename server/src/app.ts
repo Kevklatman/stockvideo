@@ -48,6 +48,18 @@ app.use((req, res, next) => {
   console.log(`${req.method} ${req.url}`);
   next();
 });
+
+
+app.post('/api/payments/webhook', 
+  express.raw({type: 'application/json'}), 
+  (req, res, next) => {
+    console.log('Webhook received:', {
+      headers: req.headers,
+      body: req.body ? 'present' : 'missing'
+    });
+    next();
+  }
+);
 // Basic middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -62,12 +74,6 @@ app.use(security.sanitizeRequest);
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
 }
-app.post(
-  '/api/payments/webhook',
-  express.raw({ type: 'application/json' }),
-  paymentRouter
-);
-app.post('/api/payments/webhook', express.raw({ type: 'application/json' }));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -149,6 +155,7 @@ function handleGracefulShutdown() {
       process.exit(1);
     });
 }
+
 
 // Initialize server
 startServer();

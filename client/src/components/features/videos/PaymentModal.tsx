@@ -40,31 +40,35 @@ const PaymentForm = ({ videoId, price, onSuccess, onClose, isLoading }: PaymentM
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     event.stopPropagation();
-
+  
     if (!stripe || !elements) {
       setError('Payment system not initialized');
       return;
     }
-
+  
     if (isSubmittingRef.current) {
       console.log('Blocked: Submission already in progress');
       return;
     }
-
+  
     const now = Date.now();
     if (now - lastSubmissionTimeRef.current < 2000) {
       console.log('Blocked: Too many attempts');
       return;
     }
-
+  
     try {
       isSubmittingRef.current = true;
       lastSubmissionTimeRef.current = now;
       setProcessing(true);
       setError(null);
-
+  
+      // Create payment intent
+      console.log('Creating payment intent for video:', videoId);
       const { clientSecret } = await createPaymentIntent(videoId);
       
+      // Confirm the payment
+      console.log('Confirming card payment...');
       const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(
         clientSecret,
         {
@@ -73,20 +77,79 @@ const PaymentForm = ({ videoId, price, onSuccess, onClose, isLoading }: PaymentM
           },
         }
       );
-
+  
       if (stripeError) {
+        console.error('Stripe error:', stripeError);
         setError(stripeError.message || 'Payment failed');
-      } else if (paymentIntent.status === 'succeeded') {
-        onSuccess();
+        return;
+      }
+  
+      if (paymentIntent.status === 'succeeded') {
+        console.log('Payment succeeded, waiting for webhook processing...');
+        
+        // Wait for webhook processing
+        await new Promise(resolve => setTimeout(resolve, 2000));
+  
+        // Verify purchase with retries
+        const maxRetries = 3;
+        let retries = 0;
+        let verified = false;
+  
+        while (retries < maxRetries && !verified) {
+          console.log(`Verifying purchase attempt ${retries + 1}/${maxRetries}`);
+          
+          try {
+            const response = await fetch(`/api/payments/verify/${videoId}`, {
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+              }
+            });
+  
+            if (!response.ok) {
+              throw new Error('Verification request failed');
+            }
+  
+            const result = await response.json();
+            verified = result.data?.verified;
+            
+            console.log('Verification result:', result);
+  
+            if (verified) {
+              console.log('Purchase verified successfully');
+              onSuccess();
+              return;
+            }
+  
+            retries++;
+            if (retries < maxRetries) {
+              console.log('Verification failed, retrying in 2 seconds...');
+              await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+          } catch (verifyError) {
+            console.error('Verification error:', verifyError);
+            retries++;
+            if (retries < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+          }
+        }
+  
+        if (!verified) {
+          console.error('Purchase verification failed after retries');
+          setError('Payment completed but purchase verification failed. Please contact support.');
+        }
+      } else {
+        console.error('Payment intent status:', paymentIntent.status);
+        setError('Payment was not successful. Please try again.');
       }
     } catch (err) {
+      console.error('Payment error:', err);
       setError(err instanceof Error ? err.message : 'Payment failed');
     } finally {
       setProcessing(false);
       isSubmittingRef.current = false;
     }
   };
-
   const isDisabled = !stripe || processing || isLoading || isSubmittingRef.current;
 
   return (

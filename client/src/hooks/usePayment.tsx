@@ -1,9 +1,6 @@
-import { useState, useCallback } from 'react';
-import { api } from '@/lib/api';
-import { loadStripe } from '@stripe/stripe-js';
+import { useState, useCallback } from "react";
 
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
-
+// usePayment.tsx
 export function usePayment() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -13,8 +10,22 @@ export function usePayment() {
     setError(null);
 
     try {
-      // Use the payments helper from api.ts
-      return await api.payments.createIntent(videoId);
+      const response = await fetch('/api/payments/create-intent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        },
+        body: JSON.stringify({ videoId })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to create payment intent');
+      }
+
+      const data = await response.json();
+      return data.data;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Payment failed');
       throw err;
@@ -23,34 +34,22 @@ export function usePayment() {
     }
   }, []);
 
-  const processPayment = useCallback(async (
-    clientSecret: string,
-    paymentMethodId: string
-  ) => {
-    const stripe = await stripePromise;
-    if (!stripe) throw new Error('Stripe not loaded');
-
-    const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(
-      clientSecret,
-      {
-        payment_method: paymentMethodId
-      }
-    );
-
-    if (confirmError) {
-      throw new Error(confirmError.message);
-    }
-
-    return paymentIntent;
-  }, []);
-
   const verifyPurchase = useCallback(async (videoId: string) => {
     try {
-      // Use the payments helper from api.ts
-      const response = await api.payments.verifyPurchase(videoId);
-      return response.verified;
+      const response = await fetch(`/api/payments/verify/${videoId}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to verify purchase');
+      }
+
+      const data = await response.json();
+      return data.data?.verified || false;
     } catch (err) {
-      console.error('Verify purchase error:', err);
+      console.error('Verification error:', err);
       return false;
     }
   }, []);
@@ -59,7 +58,6 @@ export function usePayment() {
     isLoading,
     error,
     createPaymentIntent,
-    processPayment,
     verifyPurchase
   };
 }
