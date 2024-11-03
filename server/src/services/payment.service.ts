@@ -143,14 +143,9 @@ export class PaymentService {
             automatic_payment_methods: {
               enabled: true
             },
-            // Add success and cancel URLs
-            return_url: `${process.env.FRONTEND_URL}/payment/return?session_id={CHECKOUT_SESSION_ID}`,
-            // Add optional statement descriptor
-            statement_descriptor: `VIDEO: ${video.title.substring(0, 22)}`,
-            // Add receipt email if available
+            statement_descriptor_suffix: video.title.substring(0, 22),
             receipt_email: await this.getUserEmail(userId),
-            // Add description for better identification
-            description: `Purchase of video: ${video.title}`
+            description: `Video: ${video.title}`
           });
   
           if (!paymentIntent.client_secret) {
@@ -211,7 +206,6 @@ export class PaymentService {
   }
   
   // Helper methods
-  
   private static isValidPrice(price: unknown): price is number {
     return (
       typeof price === 'number' &&
@@ -239,6 +233,9 @@ export class PaymentService {
       return undefined;
     }
   }
+  
+  // Helper methods
+  
   
 
   /**
