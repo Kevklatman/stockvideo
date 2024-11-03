@@ -1,4 +1,6 @@
+// PaymentModal.tsx
 import React, { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { usePayment } from '@/hooks/usePayment';
 import {
   CardElement,
@@ -27,6 +29,7 @@ const PaymentForm = ({ videoId, price, onClose, onSuccess }: PaymentModalProps) 
   const { createPaymentIntent, error: paymentError } = usePayment();
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [cardComplete, setCardComplete] = useState(false);
   
   const isSubmittingRef = useRef(false);
   const lastSubmissionTimeRef = useRef(0);
@@ -39,57 +42,110 @@ const PaymentForm = ({ videoId, price, onClose, onSuccess }: PaymentModalProps) 
     };
   }, []);
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    if (!stripe || !elements) {
-      setError('Payment system not initialized');
-      return;
+  useEffect(() => {
+    if (paymentError) {
+      setError(paymentError);
     }
+  }, [paymentError]);
 
-    if (isSubmittingRef.current) {
-      console.log('Blocked: Submission already in progress');
-      return;
-    }
-
-    const now = Date.now();
-    if (now - lastSubmissionTimeRef.current < 2000) {
-      console.log('Blocked: Too many attempts');
-      return;
-    }
-
-    try {
-      isSubmittingRef.current = true;
-      lastSubmissionTimeRef.current = now;
-      setProcessing(true);
+  const handleCardChange = (event: StripeCardElementChangeEvent) => {
+    setCardComplete(event.complete);
+    if (event.error) {
+      setError(event.error.message);
+    } else {
       setError(null);
-
-      const { clientSecret } = await createPaymentIntent(videoId);
-      
-      const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(
-        clientSecret,
-        {
-          payment_method: {
-            card: elements.getElement(CardElement)!,
-          },
-        }
-      );
-
-      if (stripeError) {
-        setError(stripeError.message || 'Payment failed');
-      } else if (paymentIntent.status === 'succeeded') {
-        onSuccess();
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Payment failed');
-    } finally {
-      setProcessing(false);
-      isSubmittingRef.current = false;
     }
   };
 
-  const isDisabled = !stripe || processing || isLoading || isSubmittingRef.current;
+// In PaymentModal.tsx
+const handleSubmit = async (event: React.FormEvent) => {
+  event.preventDefault();
+  event.stopPropagation();
+
+  if (!stripe || !elements) {
+    setError('Payment system not initialized');
+    return;
+  }
+
+  if (isSubmittingRef.current) {
+    console.log('Blocked: Submission already in progress');
+    return;
+  }
+
+  if (!cardComplete) {
+    setError('Please enter complete card details');
+    return;
+  }
+
+  try {
+    isSubmittingRef.current = true;
+    lastSubmissionTimeRef.current = Date.now();
+    setProcessing(true);
+    setError(null);
+
+    // Create payment intent
+    console.log('Creating payment intent for video:', videoId);
+    const paymentData = await createPaymentIntent(videoId);
+    
+    if (!paymentData) {
+      throw new Error('Failed to create payment intent');
+    }
+
+    // Confirm the payment with Stripe
+    console.log('Confirming card payment...');
+    const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(
+      paymentData.clientSecret,
+      {
+        payment_method: {
+          card: elements.getElement(CardElement)!,
+        },
+      }
+    );
+
+    if (stripeError) {
+      throw stripeError;
+    }
+
+    if (!paymentIntent) {
+      throw new Error('No payment intent returned from Stripe');
+    }
+
+    if (paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing') {
+      // Use onSuccess from props directly since we destructured it
+      await onSuccess(paymentIntent.id);
+      router.push(`/payment/success?payment_intent=${paymentIntent.id}`);
+    } else {
+      throw new Error(`Payment status: ${paymentIntent.status}. Please try again.`);
+    }
+  } catch (err) {
+    console.error('Payment error:', err);
+    
+    if (err instanceof Error) {
+      if ('type' in err && typeof err.type === 'string') {
+        switch (err.type) {
+          case 'card_error':
+          case 'validation_error':
+            setError('Your card was declined. Please try another card.');
+            break;
+          case 'invalid_request_error':
+            setError('Invalid payment request. Please try again.');
+            break;
+          default:
+            setError(err.message);
+        }
+      } else {
+        setError(err.message);
+      }
+    } else {
+      setError('An unexpected error occurred. Please try again.');
+    }
+  } finally {
+    setProcessing(false);
+    isSubmittingRef.current = false;
+  }
+};
+
+  const isDisabled = !stripe || processing || isSubmittingRef.current || !cardComplete;
 
   return (
     <form onSubmit={handleSubmit} className="w-full space-y-4">
@@ -144,7 +200,7 @@ const PaymentForm = ({ videoId, price, onClose, onSuccess }: PaymentModalProps) 
           className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 
                    transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {(processing || isLoading || isSubmittingRef.current) ? (
+          {processing ? (
             <div className="flex items-center justify-center space-x-2">
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               <span>Processing...</span>

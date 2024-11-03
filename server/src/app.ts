@@ -69,7 +69,8 @@ if (process.env.NODE_ENV === 'production') {
 // Security middleware (except CORS and body parsing)
 app.use(security.helmet);
 app.use(security.securityHeaders);
-
+app.use(express.json({limit: '1mb'})); // or any larger size you need
+app.use(express.urlencoded({limit: '1mb', extended: true}));
 // Stripe webhook endpoint - must be before body parsing middleware
 // In your webhook route handler
 // This needs to be BEFORE any body parsing middleware
