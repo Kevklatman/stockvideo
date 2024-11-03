@@ -14,7 +14,7 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import crypto from 'crypto';
 import { PaymentService } from "../services/payment.service";
-import { VideoAccessError } from "../types";
+import { AuthenticatedRequest, PaymentError, VideoAccessError } from "../types";
 
 export class VideoController {
   private static s3Client = new S3Client({
@@ -161,7 +161,94 @@ static async getAllVideos(req: Request, res: Response, next: NextFunction): Prom
   }
 // In VideoController
 // src/controllers/video.controller.ts
+// Update VideoController.ts to add checkAccess method
+static async checkAccess(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { videoId } = req.params;
+    const userId = req.user?.id;
 
+    if (!userId) {
+      res.status(401).json({
+        status: 'error',
+        code: 'UNAUTHORIZED',
+        message: 'Authentication required'
+      });
+      return;
+    }
+
+    // Check if user is owner
+    const isOwner = await VideoService.isVideoOwner(videoId, userId);
+
+    if (isOwner) {
+      res.json({
+        status: 'success',
+        data: {
+          hasAccess: true,
+          isOwner: true
+        }
+      });
+      return;
+    }
+
+    // Check if user has purchased the video
+    const hasPurchased = await PaymentService.verifyPurchase(userId, videoId);
+
+    res.json({
+      status: 'success',
+      data: {
+        hasAccess: hasPurchased.verified,
+        isOwner: false
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Update PaymentController.ts createPaymentIntent
+static async createPaymentIntent(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { videoId } = req.body;
+    const userId = req.user?.id;
+
+    if (!userId) {
+      res.status(401).json({
+        status: 'error',
+        code: 'UNAUTHORIZED',
+        message: 'Authentication required'
+      });
+      return;
+    }
+
+    const paymentIntent = await PaymentService.createPaymentIntent(
+      userId,
+      videoId
+    );
+
+    res.json({
+      status: 'success',
+      data: paymentIntent
+    });
+  } catch (error) {
+    if (error instanceof PaymentError) {
+      res.status(400).json({
+        status: 'error',
+        code: error.code,
+        message: error.message
+      });
+      return;
+    }
+    next(error);
+  }
+}
 static async getVideoUrls(req: Request, res: Response) {
   try {
     const { videoId } = req.params;

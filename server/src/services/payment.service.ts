@@ -445,157 +445,85 @@ protected static async fulfillPayment(
     }
   }
 
-  static async handleWebhook(event: Stripe.Event): Promise<void> {
-    const eventLogger = this.logger.child({ 
-      eventId: event.id,
-      eventType: event.type
-    });
-  
-    try {
-      // Validate event before processing
-      this.validateWebhookEvent(event);
+// In payment.service.ts, update the handleWebhook method:
+static async handleWebhook(event: Stripe.Event): Promise<void> {
+  const eventLogger = this.logger.child({ 
+    eventId: event.id,
+    eventType: event.type
+  });
 
-      eventLogger.info('Processing webhook event', {
-        type: event.type,
-        id: event.id,
-        objectId: 'id' in event.data.object ? event.data.object.id : 'unknown'
-      });
-  
-      switch (event.type) {
-        case 'payment_intent.succeeded': {
-          const paymentIntent = event.data.object as Stripe.PaymentIntent;
-          eventLogger.info('Processing payment_intent.succeeded', {
-            id: paymentIntent.id,
-            metadata: paymentIntent.metadata,
-            amount: paymentIntent.amount
-          });
-  
-          if (!this.validatePaymentMetadata(paymentIntent.metadata)) {
-            eventLogger.error('Invalid payment metadata', { metadata: paymentIntent.metadata });
-            return;
-          }
-  
-          const lockToken = await this.acquireFulfillmentLock(paymentIntent.id);
-          if (!lockToken) {
-            eventLogger.info('Fulfillment already in progress', { paymentIntentId: paymentIntent.id });
-            return;
-          }
-  
-          try {
-            if (await this.isFulfillmentComplete(paymentIntent.id)) {
-              eventLogger.info('Payment already fulfilled', { paymentIntentId: paymentIntent.id });
-              return;
-            }
-  
-            await AppDataSource.transaction(async transactionalEntityManager => {
-              const purchase = await transactionalEntityManager
-                .createQueryBuilder(Purchase, 'purchase')
-                .where('purchase.id = :purchaseId', { 
-                  purchaseId: paymentIntent.metadata.purchaseId 
-                })
-                .setLock('pessimistic_write')
-                .getOne();
-  
-              if (!purchase) {
-                throw new PaymentError(`Purchase not found: ${paymentIntent.metadata.purchaseId}`);
-              }
-  
-              if (purchase.status === 'completed') {
-                eventLogger.info('Purchase already completed', { purchaseId: purchase.id });
-                return;
-              }
-  
-              if (purchase.stripePaymentId && purchase.stripePaymentId !== paymentIntent.id) {
-                throw new PaymentError('Purchase already associated with different payment');
-              }
-  
-              purchase.status = 'completed';
-              purchase.stripePaymentId = paymentIntent.id;
-              purchase.completedAt = new Date();
-              purchase.amount = this.fromCents(paymentIntent.amount);
-  
-              await transactionalEntityManager.save(purchase);
-              await this.markFulfillmentComplete(paymentIntent.id, purchase.id);
-              
-              eventLogger.info('Purchase successfully completed', {
-                purchaseId: purchase.id,
-                amount: purchase.amount,
-                status: purchase.status
-              });
-  
-              await this.clearPaymentCache(paymentIntent.id);
-            });
-          } finally {
-            await this.releaseFulfillmentLock(paymentIntent.id, lockToken);
-          }
-          break;
-        }
-  
-        case 'payment_intent.payment_failed': {
-          const paymentIntent = event.data.object as Stripe.PaymentIntent;
-          eventLogger.info('Processing payment_intent.payment_failed', {
-            id: paymentIntent.id,
-            metadata: paymentIntent.metadata,
-            error: paymentIntent.last_payment_error
-          });
-  
-          if (this.validatePaymentMetadata(paymentIntent.metadata)) {
-            await AppDataSource.transaction(async transactionalEntityManager => {
-              const purchase = await transactionalEntityManager
-                .createQueryBuilder(Purchase, 'purchase')
-                .where('purchase.id = :purchaseId', { 
-                  purchaseId: paymentIntent.metadata.purchaseId 
-                })
-                .setLock('pessimistic_write')
-                .getOne();
-  
-              if (purchase && purchase.status !== 'completed') {
-                purchase.status = 'failed';
-                purchase.stripePaymentId = paymentIntent.id;
-                await transactionalEntityManager.save(purchase);
-                
-                eventLogger.info('Purchase marked as failed', { 
-                  purchaseId: purchase.id,
-                  paymentIntentId: paymentIntent.id
-                });
-              }
-            });
-          }
-  
-          await this.clearPaymentCache(paymentIntent.id);
-          break;
-        }
-  
-        case 'payment_intent.processing': {
-          const paymentIntent = event.data.object as Stripe.PaymentIntent;
-          eventLogger.info('Payment processing', {
-            id: paymentIntent.id,
-            metadata: paymentIntent.metadata
-          });
-          break;
-        }
-  
-        case 'charge.succeeded':
-        case 'charge.updated':
-        case 'payment_intent.created': {
-          eventLogger.info(`Recorded ${event.type}`, {
-            id: event.data.object.id
-          });
-          break;
-        }
-      }
-    } catch (error) {
-      eventLogger.error('Error processing webhook', { 
-        error: error instanceof Error ? {
-          message: error.message,
-          stack: error.stack,
-          name: error.name
-        } : error 
-      });
+  try {
+    // Validate event before processing
+    this.validateWebhookEvent(event);
+
+    eventLogger.info('Processing webhook event', {
+      type: event.type,
+      id: event.id,
+      objectId: 'id' in event.data.object ? event.data.object.id : 'unknown'
+    });
+
+    if (event.type === 'payment_intent.succeeded') {
+      const paymentIntent = event.data.object as Stripe.PaymentIntent;
       
-      throw error;
+      if (!this.validatePaymentMetadata(paymentIntent.metadata)) {
+        eventLogger.error('Invalid payment metadata', { metadata: paymentIntent.metadata });
+        return;
+      }
+
+      const lockToken = await this.acquireFulfillmentLock(paymentIntent.id);
+      if (!lockToken) {
+        eventLogger.info('Fulfillment already in progress', { paymentIntentId: paymentIntent.id });
+        return;
+      }
+
+      try {
+        await AppDataSource.transaction(async transactionalEntityManager => {
+          const purchase = await transactionalEntityManager
+            .createQueryBuilder(Purchase, 'purchase')
+            .where('purchase.id = :purchaseId', { 
+              purchaseId: paymentIntent.metadata.purchaseId 
+            })
+            .setLock('pessimistic_write')
+            .getOne();
+
+          if (!purchase) {
+            throw new PaymentError(`Purchase not found: ${paymentIntent.metadata.purchaseId}`);
+          }
+
+          if (purchase.status === 'completed') {
+            eventLogger.info('Purchase already completed', { purchaseId: purchase.id });
+            return;
+          }
+
+          purchase.status = 'completed';
+          purchase.stripePaymentId = paymentIntent.id;
+          purchase.completedAt = new Date();
+          purchase.amount = this.fromCents(paymentIntent.amount);
+
+          await transactionalEntityManager.save(purchase);
+          await this.markFulfillmentComplete(paymentIntent.id, purchase.id);
+          
+          eventLogger.info('Purchase successfully completed', {
+            purchaseId: purchase.id,
+            amount: purchase.amount,
+            status: purchase.status
+          });
+        });
+      } finally {
+        await this.releaseFulfillmentLock(paymentIntent.id, lockToken);
+      }
     }
+  } catch (error) {
+    eventLogger.error('Error processing webhook', { 
+      error: error instanceof Error ? {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      } : error 
+    });
+    throw error;
   }
+}
   
   // Helper methods that need to be added
   

@@ -1,4 +1,6 @@
+// PaymentModal.tsx
 import React, { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { usePayment } from '@/hooks/usePayment';
 import {
   CardElement,
@@ -12,18 +14,17 @@ import { X } from 'lucide-react';
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
-
 interface PaymentModalProps {
   videoId: string;
   price: number;
   onClose: () => void;
-  onSuccess: (paymentIntentId: string) => void;
-  isLoading: boolean;
 }
-const PaymentForm = ({ videoId, price, onSuccess, onClose, isLoading }: PaymentModalProps) => {
+
+const PaymentForm = ({ videoId, price, onClose }: PaymentModalProps) => {
+  const router = useRouter();
   const stripe = useStripe();
   const elements = useElements();
-  const { createPaymentIntent, verifyPayment, error: paymentError } = usePayment();
+  const { createPaymentIntent, error: paymentError } = usePayment();
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
   const [cardComplete, setCardComplete] = useState(false);
@@ -99,7 +100,6 @@ const PaymentForm = ({ videoId, price, onSuccess, onClose, isLoading }: PaymentM
       );
 
       if (stripeError) {
-        console.error('Stripe error:', stripeError);
         throw stripeError;
       }
 
@@ -107,42 +107,9 @@ const PaymentForm = ({ videoId, price, onSuccess, onClose, isLoading }: PaymentM
         throw new Error('No payment intent returned from Stripe');
       }
 
-      if (paymentIntent.status === 'succeeded') {
-        console.log('Payment succeeded, verifying purchase...');
-        
-        // Verify purchase with retries
-        const maxRetries = 3;
-        let retries = 0;
-        let isVerified = false;  // Changed from 'verified' to 'isVerified'
-      
-        while (retries < maxRetries && !isVerified) {
-          try {
-            const verificationResult = await verifyPayment(paymentData.paymentIntentId);
-            
-            if (verificationResult.verified) {
-              console.log('Purchase verified successfully');
-              isVerified = true;  // Set the verification status
-              onSuccess(paymentData.paymentIntentId);
-              return;
-            }
-      
-            retries++;
-            if (retries < maxRetries) {
-              console.log(`Verification attempt ${retries} failed, retrying...`);
-              await new Promise(resolve => setTimeout(resolve, 2000));
-            }
-          } catch (verifyError) {
-            console.error('Verification attempt failed:', verifyError);
-            retries++;
-            if (retries < maxRetries) {
-              await new Promise(resolve => setTimeout(resolve, 2000));
-            }
-          }
-        }
-      
-        if (!isVerified) {
-          throw new Error('Payment completed but verification failed. Please contact support.');
-        }
+      if (paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing') {
+        // Redirect to success page with payment intent ID
+        router.push(`/payment/success?payment_intent=${paymentIntent.id}`);
       } else {
         throw new Error(`Payment status: ${paymentIntent.status}. Please try again.`);
       }
@@ -160,11 +127,7 @@ const PaymentForm = ({ videoId, price, onSuccess, onClose, isLoading }: PaymentM
               setError('Invalid payment request. Please try again.');
               break;
             default:
-              if (err.message.includes('verification failed')) {
-                setError('Payment verification failed. Please contact support.');
-              } else {
-                setError(err.message);
-              }
+              setError(err.message);
           }
         } else {
           setError(err.message);
@@ -178,7 +141,7 @@ const PaymentForm = ({ videoId, price, onSuccess, onClose, isLoading }: PaymentM
     }
   };
 
-  const isDisabled = !stripe || processing || isLoading || isSubmittingRef.current || !cardComplete;
+  const isDisabled = !stripe || processing || isSubmittingRef.current || !cardComplete;
 
   return (
     <form onSubmit={handleSubmit} className="w-full space-y-4">
@@ -233,7 +196,7 @@ const PaymentForm = ({ videoId, price, onSuccess, onClose, isLoading }: PaymentM
           className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 
                    transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {(processing || isLoading || isSubmittingRef.current) ? (
+          {processing ? (
             <div className="flex items-center justify-center space-x-2">
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               <span>Processing...</span>

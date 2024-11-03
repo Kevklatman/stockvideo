@@ -1,92 +1,90 @@
+// success-page.tsx
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/providers/auth-provider';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-// Add to app/(routes)/payment/success/page.tsx
+import { CheckCircle, XCircle } from 'lucide-react';
+
 export default function PaymentSuccessPage() {
-  const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
-  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<'processing' | 'success' | 'error'>('processing');
+  const [message, setMessage] = useState<string>('');
   const router = useRouter();
-  const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const paymentIntentId = searchParams?.get('payment_intent');
 
   useEffect(() => {
-    const verifyPayment = async () => {
-      try {
-        // Get session ID from URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const sessionId = urlParams.get('session_id');
-
-        if (!sessionId) {
-          setError('Invalid session ID');
-          setStatus('error');
-          return;
-        }
-
-        // Verify payment with backend
-        const response = await fetch(`/api/payments/verify/${sessionId}`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-          }
-        });
-
-        if (!response.ok) {
-          throw new Error('Payment verification failed');
-        }
-
-        const data = await response.json();
-
-        if (data.data?.verified) {
-          setStatus('success');
-          // Redirect after a short delay
-          setTimeout(() => {
-            router.push('/videos');
-          }, 2000);
-        } else {
-          throw new Error('Payment not verified');
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Payment verification failed');
-        setStatus('error');
-      }
-    };
-
-    if (user) {
-      verifyPayment();
+    if (!paymentIntentId) {
+      setStatus('error');
+      setMessage('Invalid payment session');
+      return;
     }
-  }, [user, router]);
 
-  if (status === 'loading') {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center">
-        <LoadingSpinner size="large" className="mb-4" />
-        <p className="text-gray-600">Verifying your payment...</p>
-      </div>
-    );
-  }
+    // Set up redirect timer
+    const redirectTimer = setTimeout(() => {
+      router.push('/videos');
+    }, 5000);
 
-  if (status === 'error') {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center">
-        <div className="bg-red-50 p-6 rounded-lg text-center">
-          <h2 className="text-red-800 text-xl font-semibold mb-2">Payment Error</h2>
-          <p className="text-red-600">{error || 'An error occurred during payment verification'}</p>
-          <button 
-            onClick={() => router.push('/videos')}
-            className="mt-4 px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200"
-          >
-            Return to Videos
-          </button>
-        </div>
-      </div>
-    );
-  }
+    return () => clearTimeout(redirectTimer);
+  }, [paymentIntentId, router]);
+
+  const renderContent = () => {
+    switch (status) {
+      case 'processing':
+        return (
+          <>
+            <LoadingSpinner size="large" className="mb-6 text-blue-500" />
+            <h2 className="text-2xl font-semibold mb-4">Processing Your Payment</h2>
+            <p className="text-gray-600">
+              Please wait while we process your payment. You will be redirected automatically.
+            </p>
+          </>
+        );
+
+      case 'success':
+        return (
+          <>
+            <CheckCircle className="w-16 h-16 text-green-500 mb-6" />
+            <h2 className="text-2xl font-semibold mb-4">Payment Successful!</h2>
+            <p className="text-gray-600">
+              Thank you for your purchase. You will be redirected shortly.
+            </p>
+          </>
+        );
+
+      case 'error':
+        return (
+          <>
+            <XCircle className="w-16 h-16 text-red-500 mb-6" />
+            <h2 className="text-2xl font-semibold mb-4">Payment Error</h2>
+            <p className="text-red-600 mb-4">{message}</p>
+            <button
+              onClick={() => router.push('/videos')}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              Return to Videos
+            </button>
+          </>
+        );
+    }
+  };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center">
-      <div className="bg-green-50 p-6 rounded-lg text-center">
-        <h2 className="text-green-800 text-xl font-semibold mb-2">Payment Successful!</h2>
-        <p className="text-green-600">Thank you for your purchase.</p>
-        <p className="text-green-600 text-sm mt-2">Redirecting you to videos...</p>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="bg-white p-8 rounded-lg shadow-md text-center max-w-md w-full mx-4">
+        {renderContent()}
+        
+        <div className="mt-6 text-sm text-gray-500">
+          {status !== 'error' && (
+            <>
+              Not redirected?{' '}
+              <button
+                onClick={() => router.push('/videos')}
+                className="text-blue-500 hover:underline"
+              >
+                Click here
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
