@@ -183,25 +183,13 @@ export class PaymentService {
     try {
       console.log('Verifying purchase:', { userId, videoId });
       
-      // Wait for the purchase record to be updated by the webhook
-      let purchase: Purchase | null = null;
-      let retries = 0;
-  
-      while (!purchase && retries < 5) {
-        purchase = await this.purchaseRepository.findOne({
-          where: {
-            userId,
-            videoId,
-            status: 'completed'
-          }
-        });
-  
-        if (!purchase) {
-          console.log('Purchase not found, waiting for webhook processing...');
-          await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for 1 second
-          retries++;
+      const purchase = await this.purchaseRepository.findOne({
+        where: {
+          userId,
+          videoId,
+          status: 'completed'
         }
-      }
+      });
   
       console.log('Purchase verification result:', {
         found: !!purchase,
@@ -223,9 +211,6 @@ export class PaymentService {
    * Handles Stripe webhook events
    */
 
-/**
- * Handles Stripe webhook events
- */
 static async handleWebhook(event: Stripe.Event): Promise<void> {
   try {
     console.log('Processing webhook event:', {
@@ -287,50 +272,34 @@ static async handleWebhook(event: Stripe.Event): Promise<void> {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
         console.log('Processing payment_intent.payment_failed:', {
           id: paymentIntent.id,
-          metadata: paymentIntent.metadata,
-          amount: paymentIntent.amount
+          metadata: paymentIntent.metadata
         });
 
-        // Check if payment intent has required metadata
-        if (!paymentIntent.metadata?.purchaseId) {
-          console.error('No purchaseId in payment intent metadata:', paymentIntent.id);
-          return;
-        }
+        if (paymentIntent.metadata?.purchaseId) {
+          const purchase = await this.purchaseRepository.findOne({
+            where: { id: paymentIntent.metadata.purchaseId }
+          });
 
-        await AppDataSource.transaction(async transactionalEntityManager => {
-          const purchase = await transactionalEntityManager
-            .createQueryBuilder(Purchase, 'purchase')
-            .where('purchase.id = :purchaseId', { 
-              purchaseId: paymentIntent.metadata.purchaseId 
-            })
-            .setLock('pessimistic_write')
-            .getOne();
-
-          if (!purchase) {
-            console.error('Purchase not found:', paymentIntent.metadata.purchaseId);
-            return;
+          if (purchase) {
+            purchase.status = 'failed';
+            purchase.stripePaymentId = paymentIntent.id;
+            await this.purchaseRepository.save(purchase);
           }
-
-          console.log('Updating purchase status:', {
-            id: purchase.id,
-            oldStatus: purchase.status,
-            newStatus: 'failed'
-          });
-
-          purchase.status = 'failed';
-
-          await transactionalEntityManager.save(purchase);
-          
-          console.log('Purchase status updated successfully:', {
-            id: purchase.id,
-            status: 'failed'
-          });
-        });
+        }
         break;
       }
 
+      // Handle these events but don't error
+      case 'charge.succeeded':
+      case 'charge.updated':
+      case 'payment_intent.created':
+        console.log(`Processing ${event.type}:`, {
+          id: event.data.object.id
+        });
+        break;
+
       default:
-        console.log('Unhandled event type:', event.type);
+        console.log(`Unhandled event type: ${event.type}`);
     }
   } catch (error) {
     console.error('Error processing webhook:', error);

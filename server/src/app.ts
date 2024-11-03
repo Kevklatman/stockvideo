@@ -72,22 +72,22 @@ app.use(security.securityHeaders);
 
 // Stripe webhook endpoint - must be before body parsing middleware
 // In your webhook route handler
-app.get('/api/payments/webhook',
+// This needs to be BEFORE any body parsing middleware
+app.post('/api/payments/webhook',
   (req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', 'https://api.stripe.com');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Stripe-Signature');
+    const sig = req.headers['stripe-signature'];
+    console.log('Webhook received:', {
+      hasSignature: !!sig,
+      bodyType: typeof req.body,
+      bodyLength: req.body?.length,
+    });
     next();
   },
   express.raw({type: 'application/json'}),
   async (req, res) => {
     try {
       const sig = req.headers['stripe-signature'];
-      console.log('Webhook received:', {
-        hasSignature: !!sig,
-        bodyType: typeof req.body,
-        bodyLength: req.body?.length,
-      });
+      console.log('Processing webhook with signature:', sig);
 
       if (!sig) {
         console.error('No stripe signature in webhook request');
@@ -113,7 +113,7 @@ app.get('/api/payments/webhook',
 
       await PaymentService.handleWebhook(event);
       
-      res.json({ received: true });
+      res.json({received: true});
     } catch (err) {
       console.error('Webhook Error:', err);
       return res.status(400).json({
@@ -176,10 +176,14 @@ app.use((_req, res) => {
 });
 
 // Database connection and server start
+// In app.ts
 async function startServer() {
   try {
     await AppDataSource.initialize();
     console.log("Database connected");
+    
+    // Add webhook verification
+    await PaymentService.verifyWebhookConfiguration();
     
     const PORT = process.env.PORT || 3001;
     app.listen(PORT, () => {

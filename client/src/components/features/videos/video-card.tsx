@@ -107,7 +107,7 @@ const handlePurchaseSuccess = async () => {
       throw new Error(errorData.message || 'Failed to verify purchase');
     }
 
-    const data = await response.json();
+    const { data } = await response.json();
     if (data.verified) {
       setLocalPurchased(true);
       setShowPayment(false);
