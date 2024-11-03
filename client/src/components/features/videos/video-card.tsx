@@ -1,10 +1,10 @@
-// src/components/features/videos/video-card.tsx
 'use client';
 
 import { useState, useRef, SyntheticEvent } from 'react';
 import { useAuth } from '@/providers/auth-provider';
 import { Play, Lock } from 'lucide-react';
 import { PaymentModal } from './PaymentModal';
+import { usePayment } from '@/hooks/usePayment';
 
 interface VideoCardProps {
   id: string;
@@ -44,6 +44,7 @@ export function VideoCard({
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const { user, isInitialized } = useAuth();
+  const { verifyPayment } = usePayment();
 
   const isOwner = user?.id === authorId;
   const canPlayVideo = isOwner || localPurchased;
@@ -90,37 +91,25 @@ export function VideoCard({
     setIsPlaying(false);
   };
 
-// src/components/features/videos/video-card.tsx
-// Update the handlePurchaseSuccess function:
-
-const handlePurchaseSuccess = async () => {
-  setIsPurchasing(true);
-  try {
-    const response = await fetch(`/api/payments/verify/${id}`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+  const handlePurchaseSuccess = async (paymentIntentId: string) => {
+    setIsPurchasing(true);
+    try {
+      const result = await verifyPayment(paymentIntentId);
+      
+      if (result.verified) {
+        setLocalPurchased(true);
+        setShowPayment(false);
+      } else {
+        throw new Error('Purchase not verified');
       }
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Failed to verify purchase');
+    } catch (error) {
+      console.error('Error verifying purchase:', error);
+      alert('Error verifying purchase. Please contact support.');
+    } finally {
+      setIsPurchasing(false);
     }
+  };
 
-    const { data } = await response.json();
-    if (data.verified) {
-      setLocalPurchased(true);
-      setShowPayment(false);
-    } else {
-      throw new Error('Purchase not verified');
-    }
-  } catch (error) {
-    console.error('Error verifying purchase:', error);
-    alert('Error verifying purchase. Please contact support.');
-  } finally {
-    setIsPurchasing(false);
-  }
-};
   return (
     <div className="rounded-lg overflow-hidden shadow-lg bg-black">
       <div 
@@ -157,14 +146,7 @@ const handlePurchaseSuccess = async () => {
 
         {(!isPlaying || !showControls) && (
           <div 
-            onClick={() => {
-              if (canPlayVideo) {
-                setShowControls(true);
-                videoRef.current?.play();
-              } else {
-                handleVideoClick();
-              }
-            }} 
+            onClick={handleVideoClick}
             className="absolute inset-0 cursor-pointer group"
           >
             <div className="absolute inset-0 bg-black/40 group-hover:bg-black/60 transition-colors" />

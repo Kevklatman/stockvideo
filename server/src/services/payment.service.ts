@@ -236,7 +236,29 @@ export class PaymentService {
   
   // Helper methods
   
-  
+// In payment.service.ts
+static async verifyPayment(userId: string, paymentIntentId: string): Promise<{
+  verified: boolean;
+  purchase?: Purchase;
+}> {
+  try {
+    const purchase = await this.purchaseRepository.findOne({
+      where: {
+        userId,
+        stripePaymentId: paymentIntentId, // Find by payment intent ID
+        status: 'completed'
+      }
+    });
+
+    return {
+      verified: !!purchase,
+      purchase: purchase || undefined
+    };
+  } catch (error) {
+    this.logger.error('Purchase verification error:', error);
+    return { verified: false };
+  }
+}
 
   /**
    * Verifies if a user has purchased a video

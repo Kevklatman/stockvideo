@@ -6,25 +6,27 @@ import {
   useStripe,
   useElements,
 } from '@stripe/react-stripe-js';
+import { StripeCardElementChangeEvent } from '@stripe/stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
 import { X } from 'lucide-react';
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
+
 interface PaymentModalProps {
   videoId: string;
   price: number;
   onClose: () => void;
-  onSuccess: () => void;
-  isLoading?: boolean;
+  onSuccess: (paymentIntentId: string) => void;
+  isLoading: boolean;
 }
-
 const PaymentForm = ({ videoId, price, onSuccess, onClose, isLoading }: PaymentModalProps) => {
   const stripe = useStripe();
   const elements = useElements();
-  const { createPaymentIntent, error: paymentError } = usePayment();
+  const { createPaymentIntent, verifyPayment, error: paymentError } = usePayment();
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [cardComplete, setCardComplete] = useState(false);
   
   const isSubmittingRef = useRef(false);
   const lastSubmissionTimeRef = useRef(0);
@@ -37,106 +39,146 @@ const PaymentForm = ({ videoId, price, onSuccess, onClose, isLoading }: PaymentM
     };
   }, []);
 
-// In PaymentModal.tsx, update the handleSubmit function:
+  useEffect(() => {
+    if (paymentError) {
+      setError(paymentError);
+    }
+  }, [paymentError]);
 
-const handleSubmit = async (event: React.FormEvent) => {
-  event.preventDefault();
-  event.stopPropagation();
+  const handleCardChange = (event: StripeCardElementChangeEvent) => {
+    setCardComplete(event.complete);
+    if (event.error) {
+      setError(event.error.message);
+    } else {
+      setError(null);
+    }
+  };
 
-  if (!stripe || !elements) {
-    setError('Payment system not initialized');
-    return;
-  }
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
 
-  if (isSubmittingRef.current) {
-    console.log('Blocked: Submission already in progress');
-    return;
-  }
-
-  try {
-    isSubmittingRef.current = true;
-    lastSubmissionTimeRef.current = Date.now();
-    setProcessing(true);
-    setError(null);
-
-    // Create payment intent
-    console.log('Creating payment intent for video:', videoId);
-    const { clientSecret } = await createPaymentIntent(videoId);
-    
-    // Confirm the payment
-    console.log('Confirming card payment...');
-    const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(
-      clientSecret,
-      {
-        payment_method: {
-          card: elements.getElement(CardElement)!,
-        },
-      }
-    );
-
-    if (stripeError) {
-      console.error('Stripe error:', stripeError);
-      setError(stripeError.message || 'Payment failed');
+    if (!stripe || !elements) {
+      setError('Payment system not initialized');
       return;
     }
 
-    if (paymentIntent.status === 'succeeded') {
-      console.log('Payment succeeded, verifying purchase...');
+    if (isSubmittingRef.current) {
+      console.log('Blocked: Submission already in progress');
+      return;
+    }
+
+    if (!cardComplete) {
+      setError('Please enter complete card details');
+      return;
+    }
+
+    try {
+      isSubmittingRef.current = true;
+      lastSubmissionTimeRef.current = Date.now();
+      setProcessing(true);
+      setError(null);
+
+      // Create payment intent
+      console.log('Creating payment intent for video:', videoId);
+      const paymentData = await createPaymentIntent(videoId);
       
-      // Verify purchase with retries
-      const maxRetries = 3;
-      let retries = 0;
-      let verified = false;
+      if (!paymentData.clientSecret || !paymentData.paymentIntentId) {
+        throw new Error('Invalid payment intent response');
+      }
 
-      while (retries < maxRetries && !verified) {
-        try {
-          const response = await fetch(`/api/payments/verify/${videoId}`, {
-            headers: {
-              'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+      // Confirm the payment with Stripe
+      console.log('Confirming card payment...');
+      const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(
+        paymentData.clientSecret,
+        {
+          payment_method: {
+            card: elements.getElement(CardElement)!,
+          },
+        }
+      );
+
+      if (stripeError) {
+        console.error('Stripe error:', stripeError);
+        throw stripeError;
+      }
+
+      if (!paymentIntent) {
+        throw new Error('No payment intent returned from Stripe');
+      }
+
+      if (paymentIntent.status === 'succeeded') {
+        console.log('Payment succeeded, verifying purchase...');
+        
+        // Verify purchase with retries
+        const maxRetries = 3;
+        let retries = 0;
+        let isVerified = false;  // Changed from 'verified' to 'isVerified'
+      
+        while (retries < maxRetries && !isVerified) {
+          try {
+            const verificationResult = await verifyPayment(paymentData.paymentIntentId);
+            
+            if (verificationResult.verified) {
+              console.log('Purchase verified successfully');
+              isVerified = true;  // Set the verification status
+              onSuccess(paymentData.paymentIntentId);
+              return;
             }
-          });
-
-          if (!response.ok) {
-            throw new Error('Verification request failed');
-          }
-
-          const result = await response.json();
-          verified = result.data?.verified;
-
-          if (verified) {
-            console.log('Purchase verified successfully');
-            onSuccess();
-            return;
-          }
-
-          retries++;
-          if (retries < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, 2000));
-          }
-        } catch (verifyError) {
-          console.error('Verification error:', verifyError);
-          retries++;
-          if (retries < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, 2000));
+      
+            retries++;
+            if (retries < maxRetries) {
+              console.log(`Verification attempt ${retries} failed, retrying...`);
+              await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+          } catch (verifyError) {
+            console.error('Verification attempt failed:', verifyError);
+            retries++;
+            if (retries < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, 2000));
+            }
           }
         }
+      
+        if (!isVerified) {
+          throw new Error('Payment completed but verification failed. Please contact support.');
+        }
+      } else {
+        throw new Error(`Payment status: ${paymentIntent.status}. Please try again.`);
       }
-
-      if (!verified) {
-        setError('Payment completed but purchase verification failed. Please contact support.');
+    } catch (err) {
+      console.error('Payment error:', err);
+      
+      if (err instanceof Error) {
+        if ('type' in err && typeof err.type === 'string') {
+          switch (err.type) {
+            case 'card_error':
+            case 'validation_error':
+              setError('Your card was declined. Please try another card.');
+              break;
+            case 'invalid_request_error':
+              setError('Invalid payment request. Please try again.');
+              break;
+            default:
+              if (err.message.includes('verification failed')) {
+                setError('Payment verification failed. Please contact support.');
+              } else {
+                setError(err.message);
+              }
+          }
+        } else {
+          setError(err.message);
+        }
+      } else {
+        setError('An unexpected error occurred. Please try again.');
       }
-    } else {
-      setError(`Payment status: ${paymentIntent.status}. Please try again.`);
+    } finally {
+      setProcessing(false);
+      isSubmittingRef.current = false;
     }
-  } catch (err) {
-    console.error('Payment error:', err);
-    setError(err instanceof Error ? err.message : 'Payment failed');
-  } finally {
-    setProcessing(false);
-    isSubmittingRef.current = false;
-  }
-};
-  const isDisabled = !stripe || processing || isLoading || isSubmittingRef.current;
+  };
+
+  const isDisabled = !stripe || processing || isLoading || isSubmittingRef.current || !cardComplete;
 
   return (
     <form onSubmit={handleSubmit} className="w-full space-y-4">
@@ -146,6 +188,7 @@ const handleSubmit = async (event: React.FormEvent) => {
           type="button"
           onClick={onClose}
           className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+          aria-label="Close"
         >
           <X size={20} />
         </button>
@@ -173,6 +216,8 @@ const handleSubmit = async (event: React.FormEvent) => {
               },
               hidePostalCode: true,
             }}
+            onChange={handleCardChange}
+            className="min-h-[20px]"
           />
         </div>
 
@@ -223,6 +268,7 @@ export function PaymentModal(props: PaymentModalProps) {
       <div 
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={props.onClose}
+        aria-hidden="true"
       />
       
       <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md p-6 m-4">

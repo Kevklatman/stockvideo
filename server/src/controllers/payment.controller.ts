@@ -105,42 +105,32 @@ export class PaymentController {
     }
   }
 
-  static async verifyPayment(req: AuthRequest, res: Response) {
-    try {
-      const userId = req.user?.id;
-      const { videoId } = req.params;
+// In payment.controller.ts
+static async verifyPayment(req: AuthRequest, res: Response) {
+  try {
+    const userId = req.user?.id;
+    const { paymentIntentId } = req.params; // Use paymentIntentId from params
 
-      if (!userId) {
-        return res.status(401).json({
-          status: 'error',
-          code: 'UNAUTHORIZED',
-          message: 'Authentication required'
-        });
-      }
-
-      if (!videoId) {
-        return res.status(400).json({
-          status: 'error',
-          code: 'MISSING_VIDEO_ID',
-          message: 'Video ID is required'
-        });
-      }
-
-      console.log('Verifying payment:', { userId, videoId });
-
-      const { verified, purchase } = await PaymentService.verifyPurchase(userId, videoId);
-
-      console.log('Payment verification result:', { verified, purchase });
-
-      return res.json({
-        status: 'success',
-        data: { verified, purchase }
+    if (!userId) {
+      return res.status(401).json({
+        status: 'error',
+        code: 'UNAUTHORIZED',
+        message: 'Authentication required'
       });
-    } catch (error) {
-      console.error('Payment verification failed:', error);
-      return handleControllerError(error, res);
     }
+
+    console.log('Verifying payment:', { userId, paymentIntentId });
+
+    const result = await PaymentService.verifyPayment(userId, paymentIntentId);
+
+    return res.json({
+      status: 'success',
+      data: result
+    });
+  } catch (error) {
+    return handleControllerError(error, res);
   }
+}
 
   static async getPurchaseHistory(req: AuthRequest, res: Response) {
     try {
