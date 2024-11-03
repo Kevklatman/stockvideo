@@ -10,7 +10,11 @@ export interface User {
   createdAt: string;
   updatedAt: string;
 }
-
+export interface Logger {
+  child(metadata: Record<string, any>): Logger;
+  info(message: string, metadata?: Record<string, any>): void;
+  error(message: string, metadata?: Record<string, any>): void;
+}
 export interface Video {
   id: string;
   title: string;
@@ -79,9 +83,10 @@ export interface AuthenticatedVideoRequest extends AuthenticatedRequest<VideoReq
 // Payment Types
 export interface PaymentIntent {
   clientSecret: string;
-  amount: number;         // in dollars
+  amount: number;
   currency: string;
-  metadata?: Record<string, string>;
+  purchaseId: string;
+  paymentIntentId: string;
 }
 
 export interface PaymentIntentResponse {
