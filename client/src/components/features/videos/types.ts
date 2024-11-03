@@ -18,8 +18,8 @@
 
   export interface PaymentModalProps {
     videoId: string;
-    price: number; // in dollars
+    price: number;
     onClose: () => void;
-    onSuccess: () => void;
+    onSuccess: (paymentIntentId: string) => Promise<void>;
     isLoading?: boolean;
   }

@@ -18,9 +18,11 @@ interface PaymentModalProps {
   videoId: string;
   price: number;
   onClose: () => void;
+  onSuccess: (paymentIntentId: string) => Promise<void>;
+  isLoading?: boolean;
 }
 
-const PaymentForm = ({ videoId, price, onClose }: PaymentModalProps) => {
+const PaymentForm = ({ videoId, price, onClose, onSuccess }: PaymentModalProps) => {
   const router = useRouter();
   const stripe = useStripe();
   const elements = useElements();
@@ -109,7 +111,8 @@ const handleSubmit = async (event: React.FormEvent) => {
     }
 
     if (paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing') {
-      // Redirect to success page with payment intent ID
+      // Use onSuccess from props directly since we destructured it
+      await onSuccess(paymentIntent.id);
       router.push(`/payment/success?payment_intent=${paymentIntent.id}`);
     } else {
       throw new Error(`Payment status: ${paymentIntent.status}. Please try again.`);

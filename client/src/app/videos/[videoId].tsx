@@ -203,8 +203,9 @@ export default function VideoWatchPage() {
         <PaymentModal
           videoId={video.id}
           price={video.price}
-          onClose={() => setShowPaymentModal(false)}
-        />
+          onClose={() => setShowPaymentModal(false)} onSuccess={function (): Promise<void> {
+            throw new Error('Function not implemented.');
+          }}        />
       )}
     </div>
   );

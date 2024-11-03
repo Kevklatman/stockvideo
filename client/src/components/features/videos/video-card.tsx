@@ -96,7 +96,7 @@ export function VideoCard({
     try {
       const result = await verifyPayment(paymentIntentId);
       
-      if (result.verified) {
+      if (result && result.verified) {
         setLocalPurchased(true);
         setShowPayment(false);
       } else {
@@ -109,7 +109,6 @@ export function VideoCard({
       setIsPurchasing(false);
     }
   };
-
   return (
     <div className="rounded-lg overflow-hidden shadow-lg bg-black">
       <div 
@@ -229,16 +228,13 @@ export function VideoCard({
       </div>
       
       {showPayment && (
-        <PaymentModal
-          videoId={id}
-          price={numericPrice}
-          onClose={() => {
-            setShowPayment(false);
-            setIsPurchasing(false);
-          }}
-          onSuccess={handlePurchaseSuccess}
-          isLoading={isPurchasing}
-        />
+  <PaymentModal
+    videoId={id}
+    price={numericPrice}
+    onClose={() => setShowPayment(false)}
+    onSuccess={handlePurchaseSuccess}
+    isLoading={isPurchasing}
+  />
       )}
     </div>
   );
