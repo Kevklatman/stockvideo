@@ -1,5 +1,4 @@
 // src/types/global.d.ts
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import { Express } from 'express';
 
 declare module 'express' {
@@ -9,6 +8,7 @@ declare module 'express' {
       email: string;
       role: string;
     };
+    rawBody?: Buffer;
   }
 }
 

@@ -37,7 +37,7 @@ export class PaymentService {
 
   static async createPaymentIntent(
     userId: string, 
-    videoId: string
+    videoId: string, 
   ): Promise<PaymentIntent> {
     console.log('Starting payment intent creation:', { userId, videoId });
     
@@ -112,12 +112,15 @@ export class PaymentService {
 
         // Create Stripe PaymentIntent
         const paymentIntent = await stripe.paymentIntents.create({
-          amount: toCents(video.price), // Convert to cents for Stripe
+          amount: toCents(video.price),
           currency: 'usd',
           metadata: {
             purchaseId: savedPurchase.id,
             videoId,
             userId
+          },
+          automatic_payment_methods: {
+            enabled: true
           }
         });
 
@@ -207,35 +210,103 @@ export class PaymentService {
   /**
    * Handles Stripe webhook events
    */
-  static async handleWebhook(event: Stripe.Event): Promise<void> {
-    try {
-      console.log('Handling webhook event:', {
-        type: event.type,
-        id: event.id
-      });      switch (event.type) {
-        case 'payment_intent.succeeded':
-          const paymentIntent = event.data.object as Stripe.PaymentIntent;
-          console.log('Processing successful payment:', {
-            id: paymentIntent.id,
-            metadata: paymentIntent.metadata
-          });
-          await this.handleSuccessfulPayment(event.data.object as Stripe.PaymentIntent);
-          break;
-          default:
-            console.log(`Unhandled event type: ${event.type}`);
-        case 'payment_intent.payment_failed':
-          await this.handleFailedPayment(event.data.object as Stripe.PaymentIntent);
-          break;
+ // src/services/payment.service.ts
 
-        case 'payment_intent.canceled':
-          await this.handleCanceledPayment(event.data.object as Stripe.PaymentIntent);
-          break;
+static async handleWebhook(event: Stripe.Event): Promise<void> {
+  try {
+    console.log('Processing webhook event:', {
+      type: event.type,
+      id: event.id,
+      objectId: 'id' in event.data.object ? event.data.object.id : 'unknown'
+    });
+
+    switch (event.type) {
+      case 'payment_intent.succeeded': {
+        const paymentIntent = event.data.object as Stripe.PaymentIntent;
+        console.log('Processing payment_intent.succeeded:', {
+          id: paymentIntent.id,
+          metadata: paymentIntent.metadata,
+          amount: paymentIntent.amount
+        });
+
+        // Check if payment intent has required metadata
+        if (!paymentIntent.metadata?.purchaseId) {
+          console.error('No purchaseId in payment intent metadata:', paymentIntent.id);
+          return;
+        }
+
+        await AppDataSource.transaction(async transactionalEntityManager => {
+          const purchase = await transactionalEntityManager
+            .createQueryBuilder(Purchase, 'purchase')
+            .where('purchase.id = :purchaseId', { 
+              purchaseId: paymentIntent.metadata.purchaseId 
+            })
+            .setLock('pessimistic_write')
+            .getOne();
+
+          if (!purchase) {
+            console.error('Purchase not found:', paymentIntent.metadata.purchaseId);
+            return;
+          }
+
+          console.log('Updating purchase status:', {
+            id: purchase.id,
+            oldStatus: purchase.status,
+            newStatus: 'completed'
+          });
+
+          purchase.status = 'completed';
+          purchase.stripePaymentId = paymentIntent.id;
+          purchase.completedAt = new Date();
+
+          await transactionalEntityManager.save(purchase);
+          
+          console.log('Purchase status updated successfully:', {
+            id: purchase.id,
+            status: 'completed'
+          });
+        });
+        break;
       }
-    } catch (error) {
-      this.logger.error('Webhook handling failed:', error);
-      throw new PaymentError('Failed to process webhook event');
+
+      case 'payment_intent.payment_failed': {
+        const paymentIntent = event.data.object as Stripe.PaymentIntent;
+        console.log('Processing payment_intent.payment_failed:', {
+          id: paymentIntent.id,
+          metadata: paymentIntent.metadata
+        });
+
+        if (paymentIntent.metadata?.purchaseId) {
+          const purchase = await this.purchaseRepository.findOne({
+            where: { id: paymentIntent.metadata.purchaseId }
+          });
+
+          if (purchase) {
+            purchase.status = 'failed';
+            purchase.stripePaymentId = paymentIntent.id;
+            await this.purchaseRepository.save(purchase);
+          }
+        }
+        break;
+      }
+
+      // Handle these events but don't error
+      case 'charge.succeeded':
+      case 'charge.updated':
+      case 'payment_intent.created':
+        console.log(`Processing ${event.type}:`, {
+          id: event.data.object.id
+        });
+        break;
+
+      default:
+        console.log(`Unhandled event type: ${event.type}`);
     }
+  } catch (error) {
+    console.error('Error processing webhook:', error);
+    throw error;
   }
+}
 
   /**
    * Retrieves purchase history for a user
@@ -371,31 +442,36 @@ export class PaymentService {
       throw new PaymentError('Purchase ID not found in payment metadata');
     }
   
-    const purchase = await this.purchaseRepository.findOne({
-      where: { id: purchaseId }
-    });
-  
-    console.log('Found purchase record:', {
-      purchaseId,
-      found: !!purchase,
-      currentStatus: purchase?.status
-    });
-  
-    if (!purchase) {
-      throw new PaymentError('Purchase record not found');
-    }
-  
     try {
-      purchase.status = 'completed';
-      purchase.stripePaymentId = paymentIntent.id;
-      purchase.completedAt = new Date();
-      
-      await this.purchaseRepository.save(purchase);
-      
-      console.log('Purchase status updated successfully:', {
-        purchaseId,
-        newStatus: 'completed',
-        stripePaymentId: paymentIntent.id
+      await AppDataSource.transaction(async transactionalEntityManager => {
+        const purchase = await transactionalEntityManager
+          .createQueryBuilder(Purchase, 'purchase')
+          .where('purchase.id = :purchaseId', { purchaseId })
+          .setLock('pessimistic_write')
+          .getOne();
+  
+        if (!purchase) {
+          console.error('Purchase record not found:', purchaseId);
+          throw new PaymentError('Purchase record not found');
+        }
+  
+        console.log('Updating purchase record:', {
+          id: purchaseId,
+          currentStatus: purchase.status,
+          newStatus: 'completed'
+        });
+  
+        purchase.status = 'completed';
+        purchase.stripePaymentId = paymentIntent.id;
+        purchase.completedAt = new Date();
+        
+        await transactionalEntityManager.save(purchase);
+        
+        console.log('Purchase status updated successfully:', {
+          purchaseId,
+          newStatus: 'completed',
+          stripePaymentId: paymentIntent.id
+        });
       });
   
       await this.clearPaymentCache(paymentIntent.id);

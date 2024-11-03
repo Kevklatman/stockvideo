@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import express from "express";
+import express, { json, raw } from "express";
 import dotenv from "dotenv";
 import * as path from 'path';
 import { AppDataSource } from "./config/database";
@@ -10,15 +10,22 @@ import { errorHandler } from "./middleware/error.middleware";
 import { useContainer} from "routing-controllers";
 import { Container } from "typedi";
 import { paymentRouter } from "./routes/payment.routes";
+import { PaymentController } from './controllers/payment.controller';
+import { PaymentService } from './services/payment.service';
+import Stripe from 'stripe';
 
+const app = express();
 
 // Load environment variables early
 dotenv.config({ path: path.join(__dirname, '../.env') });
+
 const requiredEnvVars = [
   'AWS_REGION',
   'AWS_BUCKET_NAME',
   'AWS_ACCESS_KEY_ID',
-  'AWS_SECRET_ACCESS_KEY'
+  'AWS_SECRET_ACCESS_KEY',
+  'STRIPE_SECRET_KEY',
+  'STRIPE_WEBHOOK_SECRET'
 ];
 
 const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
@@ -26,6 +33,7 @@ if (missingEnvVars.length > 0) {
   console.error('Missing required environment variables:', missingEnvVars);
   process.exit(1);
 }
+
 // Log environment variables to verify they're loaded
 console.log('Environment loaded:', {
   aws: {
@@ -33,6 +41,10 @@ console.log('Environment loaded:', {
     bucket: process.env.AWS_BUCKET_NAME,
     hasAccessKey: !!process.env.AWS_ACCESS_KEY_ID,
     hasSecretKey: !!process.env.AWS_SECRET_ACCESS_KEY
+  },
+  stripe: {
+    hasSecretKey: !!process.env.STRIPE_SECRET_KEY,
+    hasWebhookSecret: !!process.env.STRIPE_WEBHOOK_SECRET
   },
   server: {
     port: process.env.PORT,
@@ -43,40 +55,82 @@ console.log('Environment loaded:', {
 // Initialize reflect-metadata and dependency injection
 useContainer(Container);
 
-const app = express();
+// Request logging middleware
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.url}`);
   next();
 });
-
-
-app.post('/api/payments/webhook', 
-  express.raw({type: 'application/json'}), 
-  (req, res, next) => {
-    console.log('Webhook received:', {
-      headers: req.headers,
-      body: req.body ? 'present' : 'missing'
-    });
-    next();
-  }
-);
-// Basic middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Security middleware
-app.use(security.helmet);
-app.use(security.cors);
-app.use(security.securityHeaders);
-app.use(security.sanitizeRequest);
 
 // Trust proxy if behind reverse proxy
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
 }
 
+// Security middleware (except CORS and body parsing)
+app.use(security.helmet);
+app.use(security.securityHeaders);
+
+// Stripe webhook endpoint - must be before body parsing middleware
+// In your webhook route handler
+app.post('/api/payments/webhook',
+  (req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', 'https://api.stripe.com');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Stripe-Signature');
+    next();
+  },
+  express.raw({type: 'application/json'}),
+  async (req, res) => {
+    try {
+      const sig = req.headers['stripe-signature'];
+      console.log('Webhook received:', {
+        hasSignature: !!sig,
+        bodyType: typeof req.body,
+        bodyLength: req.body?.length,
+      });
+
+      if (!sig) {
+        console.error('No stripe signature in webhook request');
+        return res.status(400).json({
+          error: 'Missing stripe signature'
+        });
+      }
+
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+        apiVersion: '2023-10-16'
+      });
+
+      const event = stripe.webhooks.constructEvent(
+        req.body,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET!
+      );
+
+      console.log('Webhook event constructed:', {
+        type: event.type,
+        id: event.id
+      });
+
+      await PaymentService.handleWebhook(event);
+      
+      res.json({ received: true });
+    } catch (err) {
+      console.error('Webhook Error:', err);
+      return res.status(400).json({
+        error: err instanceof Error ? err.message : 'Unknown error'
+      });
+    }
+  }
+);
+
+// Regular CORS for all other routes
+app.use(security.cors);
+
+// Body parsing middleware for regular routes
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(security.sanitizeRequest);
+
 const apiRouter = express.Router();
 
 // Rate limiting for API routes
@@ -88,8 +142,6 @@ apiRouter.use('/', security.rateLimits.api);
 apiRouter.use("/auth", authRouter);
 apiRouter.use("/videos", videoRouter);
 apiRouter.use("/payments", paymentRouter);
-
-
 
 // Mount all API routes under /api
 app.use("/api", apiRouter);
@@ -112,9 +164,6 @@ app.get('/health', security.rateLimits.api, (req, res) => {
 });
 
 // Global error handler
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  errorHandler(err, req, res, next);
-});
 app.use(errorHandler);
 
 // Handle 404
@@ -155,7 +204,6 @@ function handleGracefulShutdown() {
       process.exit(1);
     });
 }
-
 
 // Initialize server
 startServer();

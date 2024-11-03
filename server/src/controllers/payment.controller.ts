@@ -44,60 +44,69 @@ export class PaymentController {
     }
   }
 
-  static async handleWebhook(req: Request, res: Response) {
-    try {
-      const sig = req.headers['stripe-signature'];
-      console.log('Received webhook:', { 
-        signature: !!sig,
-        body: typeof req.body === 'string' ? 'raw string' : typeof req.body 
+// src/controllers/payment.controller.ts
+// src/controllers/payment.controller.ts
+
+static async handleWebhook(req: Request, res: Response): Promise<Response> {
+  try {
+    const sig = req.headers['stripe-signature'];
+    
+    console.log('Processing webhook:', {
+      hasSignature: !!sig,
+      signatureValue: sig,
+      bodyType: typeof req.body,
+      bodyLength: req.body?.length,
+      webhookSecret: !!process.env.STRIPE_WEBHOOK_SECRET
+    });
+
+    if (!sig || typeof sig !== 'string') {
+      console.error('Missing or invalid Stripe signature');
+      return res.status(400).json({
+        status: 'error',
+        message: 'Missing Stripe signature'
       });
-  
-      if (!sig || typeof sig !== 'string') {
-        console.error('Missing Stripe signature');
-        return res.status(400).json({
-          status: 'error',
-          code: 'MISSING_SIGNATURE',
-          message: 'Stripe signature is required'
-        });
-      }
-  
-      if (!process.env.STRIPE_WEBHOOK_SECRET) {
-        console.error('Missing webhook secret');
-        throw new Error('Stripe webhook secret is not configured');
-      }
-  
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-        apiVersion: '2023-10-16'
-      });
-  
-      let event;
-      try {
-        event = stripe.webhooks.constructEvent(
-          req.body, // should be raw buffer
-          sig,
-          process.env.STRIPE_WEBHOOK_SECRET
-        );
-        console.log('Webhook event constructed:', {
-          type: event.type,
-          id: event.id
-        });
-      } catch (err) {
-        console.error('Webhook signature verification failed:', err);
-        if (err instanceof Error) {
-          return res.status(400).send(`Webhook Error: ${err.message}`);
-        }
-        return res.status(400).send('Webhook Error: Unknown error');
-      }
-  
-      await PaymentService.handleWebhook(event);
-      console.log('Webhook processed successfully');
-      
-      return res.json({ received: true });
-    } catch (error) {
-      console.error('Webhook processing error:', error);
-      return handleControllerError(error, res);
     }
+
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+      apiVersion: '2023-10-16'
+    });
+
+    let event: Stripe.Event;
+    try {
+      event = stripe.webhooks.constructEvent(
+        req.body,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET!
+      );
+      
+      console.log('Webhook event constructed:', {
+        type: event.type,
+        id: event.id,
+        object: event.data.object
+      });
+
+    } catch (err) {
+      console.error('Webhook signature verification failed:', err);
+      return res.status(400).json({
+        status: 'error',
+        message: `Webhook signature verification failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+      });
+    }
+
+    await PaymentService.handleWebhook(event);
+    
+    return res.json({
+      status: 'success',
+      received: true
+    });
+  } catch (error) {
+    console.error('Webhook processing error:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Unknown webhook processing error'
+    });
   }
+}
 
   static async verifyPayment(req: AuthRequest, res: Response) {
     try {
