@@ -33,14 +33,13 @@ export interface Purchase {
   id: string;
   userId: string;
   videoId: string;
-  amount: number;         // in dollars
-  status: PurchaseStatus['status'];
-  createdAt: string;
-  updatedAt: string;
-  completedAt?: string;
-  video?: Video;
+  amount: number;
+  status: 'pending' | 'completed' | 'failed';
+  stripePaymentId: string;
+  createdAt: Date;
+  updatedAt: Date;
+  completedAt?: Date;
 }
-
 // Status Types
 export interface PurchaseStatus {
   status: 'pending' | 'completed' | 'failed';

@@ -11,8 +11,11 @@ interface PaymentIntentResponse {
 
 interface VerificationResult {
   verified: boolean;
-  purchaseId?: string;
-  purchaseDate?: string;
+  purchase?: {
+    id: string;
+    status: 'pending' | 'completed' | 'failed';
+    completedAt?: string;
+  };
 }
 
 export function usePayment() {
@@ -67,21 +70,16 @@ export function usePayment() {
           'Content-Type': 'application/json'
         }
       });
-
-      const data = await response.json();
-
+  
       if (!response.ok) {
-        throw new Error(data.message || 'Failed to verify payment');
+        throw new Error('Failed to verify payment');
       }
-
-      return {
-        verified: data.data?.verified || false,
-        purchaseId: data.data?.purchase?.id,
-        purchaseDate: data.data?.purchase?.completedAt
-      };
+  
+      const data = await response.json();
+      return data.data;
     } catch (err) {
       console.error('Verification error:', err);
-      throw err; // Let the calling component handle the error
+      throw err;
     }
   }, []);
 

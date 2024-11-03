@@ -63,8 +63,11 @@ export interface PaymentIntentResponse {
 
 export interface PaymentVerificationResponse {
   verified: boolean;
-  purchaseId?: string;
-  purchaseDate?: string;
+  purchase?: {
+    id: string;
+    status: 'pending' | 'completed' | 'failed';
+    completedAt?: string;
+  };
 }
 
 export interface PurchaseHistoryItem {

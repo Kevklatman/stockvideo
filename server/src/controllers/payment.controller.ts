@@ -91,10 +91,13 @@ export class PaymentController {
       }
 
       await PaymentService.handleWebhook(event);
-      
+    
       return res.json({
         status: 'success',
-        received: true
+        data: {
+          received: true,
+          event: event.type
+        }
       });
     } catch (error) {
       console.error('Webhook processing error:', error);
@@ -109,7 +112,7 @@ export class PaymentController {
 static async verifyPayment(req: AuthRequest, res: Response) {
   try {
     const userId = req.user?.id;
-    const { paymentIntentId } = req.params; // Use paymentIntentId from params
+    const { paymentIntentId } = req.params;
 
     if (!userId) {
       return res.status(401).json({
@@ -119,13 +122,14 @@ static async verifyPayment(req: AuthRequest, res: Response) {
       });
     }
 
-    console.log('Verifying payment:', { userId, paymentIntentId });
-
     const result = await PaymentService.verifyPayment(userId, paymentIntentId);
 
     return res.json({
       status: 'success',
-      data: result
+      data: {
+        verified: result.verified,
+        purchase: result.purchase
+      }
     });
   } catch (error) {
     return handleControllerError(error, res);

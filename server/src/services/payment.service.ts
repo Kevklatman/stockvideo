@@ -238,26 +238,35 @@ export class PaymentService {
   // Helper methods
   
 // In payment.service.ts
+// In payment.service.ts
 static async verifyPayment(userId: string, paymentIntentId: string): Promise<{
   verified: boolean;
-  purchase?: Purchase;
+  purchase?: {
+    id: string;
+    status: 'pending' | 'completed' | 'failed';
+    completedAt?: string;
+  };
 }> {
   try {
     const purchase = await this.purchaseRepository.findOne({
       where: {
         userId,
-        stripePaymentId: paymentIntentId, // Find by payment intent ID
-        status: 'completed'
-      }
+        stripePaymentId: paymentIntentId
+      },
+      select: ['id', 'status', 'completedAt']
     });
 
     return {
-      verified: !!purchase,
-      purchase: purchase || undefined
+      verified: purchase?.status === 'completed',
+      purchase: purchase ? {
+        id: purchase.id,
+        status: purchase.status,
+        completedAt: purchase.completedAt?.toISOString() // Convert Date to ISO string
+      } : undefined
     };
   } catch (error) {
     this.logger.error('Purchase verification error:', error);
-    return { verified: false };
+    throw new PaymentError('Failed to verify payment');
   }
 }
 

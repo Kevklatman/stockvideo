@@ -39,19 +39,18 @@ export default function PaymentSuccessPage() {
     const verifyAndRedirect = async () => {
       try {
         const result = await verifyPayment(paymentIntentId);
-        
-        if (!mounted) return;
 
         if (result.verified) {
           setStatus('success');
           setShowToast(true);
-          
-          // Set up redirect timer after success
           redirectTimer = setTimeout(() => {
             if (mounted) {
               router.push('/videos');
             }
           }, 5000);
+        } else if (result.purchase?.status === 'pending') {
+          // Payment is still processing
+          setTimeout(verifyAndRedirect, 2000); // Retry after 2 seconds
         } else {
           setStatus('error');
           setMessage('Payment verification failed. Please contact support if your payment was processed.');
