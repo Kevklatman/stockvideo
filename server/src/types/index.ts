@@ -94,6 +94,8 @@ export interface PaymentIntentResponse {
   amount: number;         // in dollars
   currency: string;
   status?: string;
+  purchaseId: string;
+  paymentIntentId: string;
 }
 
 export interface PaymentMethod {
