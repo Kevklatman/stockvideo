@@ -44,69 +44,66 @@ export class PaymentController {
     }
   }
 
-// src/controllers/payment.controller.ts
-// src/controllers/payment.controller.ts
-
-static async handleWebhook(req: Request, res: Response): Promise<Response> {
-  try {
-    const sig = req.headers['stripe-signature'];
-    
-    console.log('Processing webhook:', {
-      hasSignature: !!sig,
-      signatureValue: sig,
-      bodyType: typeof req.body,
-      bodyLength: req.body?.length,
-      webhookSecret: !!process.env.STRIPE_WEBHOOK_SECRET
-    });
-
-    if (!sig || typeof sig !== 'string') {
-      console.error('Missing or invalid Stripe signature');
-      return res.status(400).json({
-        status: 'error',
-        message: 'Missing Stripe signature'
-      });
-    }
-
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: '2023-10-16'
-    });
-
-    let event: Stripe.Event;
+  static async handleWebhook(req: Request, res: Response): Promise<Response> {
     try {
-      event = stripe.webhooks.constructEvent(
-        req.body,
-        sig,
-        process.env.STRIPE_WEBHOOK_SECRET!
-      );
+      const sig = req.headers['stripe-signature'];
       
-      console.log('Webhook event constructed:', {
-        type: event.type,
-        id: event.id,
-        object: event.data.object
+      console.log('Processing webhook:', {
+        hasSignature: !!sig,
+        signatureValue: sig,
+        bodyType: typeof req.body,
+        bodyLength: req.body?.length,
+        webhookSecret: !!process.env.STRIPE_WEBHOOK_SECRET
       });
 
-    } catch (err) {
-      console.error('Webhook signature verification failed:', err);
-      return res.status(400).json({
+      if (!sig || typeof sig !== 'string') {
+        console.error('Missing or invalid Stripe signature');
+        return res.status(400).json({
+          status: 'error',
+          message: 'Missing Stripe signature'
+        });
+      }
+
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+        apiVersion: '2023-10-16'
+      });
+
+      let event: Stripe.Event;
+      try {
+        event = stripe.webhooks.constructEvent(
+          req.body,
+          sig,
+          process.env.STRIPE_WEBHOOK_SECRET!
+        );
+        
+        console.log('Webhook event constructed:', {
+          type: event.type,
+          id: event.id,
+          object: event.data.object
+        });
+
+      } catch (err) {
+        console.error('Webhook signature verification failed:', err);
+        return res.status(400).json({
+          status: 'error',
+          message: `Webhook signature verification failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+        });
+      }
+
+      await PaymentService.handleWebhook(event);
+      
+      return res.json({
+        status: 'success',
+        received: true
+      });
+    } catch (error) {
+      console.error('Webhook processing error:', error);
+      return res.status(500).json({
         status: 'error',
-        message: `Webhook signature verification failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+        message: error instanceof Error ? error.message : 'Unknown webhook processing error'
       });
     }
-
-    await PaymentService.handleWebhook(event);
-    
-    return res.json({
-      status: 'success',
-      received: true
-    });
-  } catch (error) {
-    console.error('Webhook processing error:', error);
-    return res.status(500).json({
-      status: 'error',
-      message: error instanceof Error ? error.message : 'Unknown webhook processing error'
-    });
   }
-}
 
   static async verifyPayment(req: AuthRequest, res: Response) {
     try {
@@ -131,13 +128,13 @@ static async handleWebhook(req: Request, res: Response): Promise<Response> {
 
       console.log('Verifying payment:', { userId, videoId });
 
-      const verified = await PaymentService.verifyPurchase(userId, videoId);
+      const { verified, purchase } = await PaymentService.verifyPurchase(userId, videoId);
 
-      console.log('Payment verification result:', { verified });
+      console.log('Payment verification result:', { verified, purchase });
 
       return res.json({
         status: 'success',
-        data: { verified }
+        data: { verified, purchase }
       });
     } catch (error) {
       console.error('Payment verification failed:', error);
