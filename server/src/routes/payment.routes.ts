@@ -9,6 +9,7 @@ const router = Router();
 router.use(authMiddleware);
 router.post('/create-intent', PaymentController.createPaymentIntent);
 router.get('/verify/:videoId', PaymentController.verifyPayment);
+
 router.get('/history', PaymentController.getPurchaseHistory);
 
 export { router as paymentRouter };

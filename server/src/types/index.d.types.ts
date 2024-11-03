@@ -93,7 +93,6 @@ export interface PaymentMeta {
   purchaseId: string;
   videoId: string;
   userId: string;
-  stripePaymentId: string;
 }
 
 export interface PaymentIntent {
@@ -122,6 +121,7 @@ export interface PaymentResult {
   };
   paymentIntentId?: string;
   purchaseId?: string;
+  stripePaymentId:string;
 }
 
 export interface VideoUploadResult {

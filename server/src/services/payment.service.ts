@@ -210,7 +210,6 @@ export class PaymentService {
   /**
    * Handles Stripe webhook events
    */
- // src/services/payment.service.ts
 
 static async handleWebhook(event: Stripe.Event): Promise<void> {
   try {
@@ -427,7 +426,7 @@ static async handleWebhook(event: Stripe.Event): Promise<void> {
   /**
    * Private helper methods
    */
-  private static async handleSuccessfulPayment(paymentIntent: Stripe.PaymentIntent): Promise<void> {
+  static async handleSuccessfulPayment(paymentIntent: Stripe.PaymentIntent): Promise<void> {
     console.log('Processing successful payment:', {
       paymentIntentId: paymentIntent.id,
       metadata: paymentIntent.metadata,
@@ -481,7 +480,7 @@ static async handleWebhook(event: Stripe.Event): Promise<void> {
     }
   }
 
-  private static async handleFailedPayment(paymentIntent: Stripe.PaymentIntent): Promise<void> {
+   static async handleFailedPayment(paymentIntent: Stripe.PaymentIntent): Promise<void> {
     const { purchaseId } = paymentIntent.metadata;
     
     if (!purchaseId) {
@@ -503,7 +502,7 @@ static async handleWebhook(event: Stripe.Event): Promise<void> {
     await this.clearPaymentCache(paymentIntent.id);
   }
 
-  private static async handleCanceledPayment(paymentIntent: Stripe.PaymentIntent): Promise<void> {
+   static async handleCanceledPayment(paymentIntent: Stripe.PaymentIntent): Promise<void> {
     const { purchaseId } = paymentIntent.metadata;
     
     if (purchaseId) {

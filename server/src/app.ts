@@ -72,10 +72,10 @@ app.use(security.securityHeaders);
 
 // Stripe webhook endpoint - must be before body parsing middleware
 // In your webhook route handler
-app.post('/api/payments/webhook',
+app.get('/api/payments/webhook',
   (req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', 'https://api.stripe.com');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Stripe-Signature');
     next();
   },

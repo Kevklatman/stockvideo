@@ -31,7 +31,6 @@ export interface Purchase {
   videoId: string;
   amount: number;         // in dollars
   status: PurchaseStatus['status'];
-  stripePaymentId?: string;
   createdAt: string;
   updatedAt: string;
   completedAt?: string;
@@ -107,6 +106,7 @@ export interface PaymentMeta {
   purchaseId: string;
   videoId: string;
   userId: string;
+  stripePurchaseId:string;
 }
 
 export interface PaymentVerificationResponse {
@@ -259,6 +259,7 @@ export interface StripePaymentIntent {
     purchaseId?: string;
     videoId?: string;
     userId?: string;
+    stripePaymentId?: string;
   };
 }
 
