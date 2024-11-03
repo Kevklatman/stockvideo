@@ -59,7 +59,7 @@ router.get(
 );
 
 // Verify purchase
-router.get(
+router.post(
   '/:videoId/verify',
   authMiddleware,
   VideoController.verifyPurchase

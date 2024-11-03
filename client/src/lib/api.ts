@@ -437,7 +437,7 @@ export const api = {
       api.post<PaymentIntentResponse>('/api/payments/create-intent', { videoId }),
 
     verifyPurchase: (videoId: string) =>
-      api.get<PaymentVerificationResponse>(`/api/payments/verify/${videoId}`),
+      api.post<PaymentVerificationResponse>(`/api/payments/verify/${videoId}`),
 
     getPurchaseHistory: (params?: { 
       page?: number; 
