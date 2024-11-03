@@ -22,7 +22,7 @@ export function usePayment() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const createPaymentIntent = useCallback(async (videoId: string): Promise<PaymentIntentResponse> => {
+  const createPaymentIntent = useCallback(async (videoId: string): Promise<PaymentIntentResponse | null> => {
     setIsLoading(true);
     setError(null);
 
@@ -46,23 +46,17 @@ export function usePayment() {
         throw new Error('Invalid response from server');
       }
 
-      return {
-        clientSecret: data.data.clientSecret,
-        paymentIntentId: data.data.paymentIntentId,
-        amount: data.data.amount,
-        currency: data.data.currency,
-        purchaseId: data.data.purchaseId
-      };
+      return data.data;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Payment failed';
       setError(errorMessage);
-      throw new Error(errorMessage);
+      return null;
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  const verifyPayment = useCallback(async (paymentIntentId: string): Promise<VerificationResult> => {
+  const verifyPayment = useCallback(async (paymentIntentId: string): Promise<VerificationResult | null> => {
     try {
       const response = await fetch(`/api/payments/verify/${paymentIntentId}`, {
         headers: {
@@ -70,16 +64,18 @@ export function usePayment() {
           'Content-Type': 'application/json'
         }
       });
-  
-      if (!response.ok) {
-        throw new Error('Failed to verify payment');
-      }
-  
+
       const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to verify payment');
+      }
+
       return data.data;
     } catch (err) {
       console.error('Verification error:', err);
-      throw err;
+      setError(err instanceof Error ? err.message : 'Failed to verify payment');
+      return null;
     }
   }, []);
 

@@ -55,91 +55,92 @@ const PaymentForm = ({ videoId, price, onClose }: PaymentModalProps) => {
     }
   };
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
+// In PaymentModal.tsx
+const handleSubmit = async (event: React.FormEvent) => {
+  event.preventDefault();
+  event.stopPropagation();
 
-    if (!stripe || !elements) {
-      setError('Payment system not initialized');
-      return;
+  if (!stripe || !elements) {
+    setError('Payment system not initialized');
+    return;
+  }
+
+  if (isSubmittingRef.current) {
+    console.log('Blocked: Submission already in progress');
+    return;
+  }
+
+  if (!cardComplete) {
+    setError('Please enter complete card details');
+    return;
+  }
+
+  try {
+    isSubmittingRef.current = true;
+    lastSubmissionTimeRef.current = Date.now();
+    setProcessing(true);
+    setError(null);
+
+    // Create payment intent
+    console.log('Creating payment intent for video:', videoId);
+    const paymentData = await createPaymentIntent(videoId);
+    
+    if (!paymentData) {
+      throw new Error('Failed to create payment intent');
     }
 
-    if (isSubmittingRef.current) {
-      console.log('Blocked: Submission already in progress');
-      return;
+    // Confirm the payment with Stripe
+    console.log('Confirming card payment...');
+    const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(
+      paymentData.clientSecret,
+      {
+        payment_method: {
+          card: elements.getElement(CardElement)!,
+        },
+      }
+    );
+
+    if (stripeError) {
+      throw stripeError;
     }
 
-    if (!cardComplete) {
-      setError('Please enter complete card details');
-      return;
+    if (!paymentIntent) {
+      throw new Error('No payment intent returned from Stripe');
     }
 
-    try {
-      isSubmittingRef.current = true;
-      lastSubmissionTimeRef.current = Date.now();
-      setProcessing(true);
-      setError(null);
-
-      // Create payment intent
-      console.log('Creating payment intent for video:', videoId);
-      const paymentData = await createPaymentIntent(videoId);
-      
-      if (!paymentData.clientSecret || !paymentData.paymentIntentId) {
-        throw new Error('Invalid payment intent response');
-      }
-
-      // Confirm the payment with Stripe
-      console.log('Confirming card payment...');
-      const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(
-        paymentData.clientSecret,
-        {
-          payment_method: {
-            card: elements.getElement(CardElement)!,
-          },
-        }
-      );
-
-      if (stripeError) {
-        throw stripeError;
-      }
-
-      if (!paymentIntent) {
-        throw new Error('No payment intent returned from Stripe');
-      }
-
-      if (paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing') {
-        // Redirect to success page with payment intent ID
-        router.push(`/payment/success?payment_intent=${paymentIntent.id}`);
-      } else {
-        throw new Error(`Payment status: ${paymentIntent.status}. Please try again.`);
-      }
-    } catch (err) {
-      console.error('Payment error:', err);
-      
-      if (err instanceof Error) {
-        if ('type' in err && typeof err.type === 'string') {
-          switch (err.type) {
-            case 'card_error':
-            case 'validation_error':
-              setError('Your card was declined. Please try another card.');
-              break;
-            case 'invalid_request_error':
-              setError('Invalid payment request. Please try again.');
-              break;
-            default:
-              setError(err.message);
-          }
-        } else {
-          setError(err.message);
+    if (paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing') {
+      // Redirect to success page with payment intent ID
+      router.push(`/payment/success?payment_intent=${paymentIntent.id}`);
+    } else {
+      throw new Error(`Payment status: ${paymentIntent.status}. Please try again.`);
+    }
+  } catch (err) {
+    console.error('Payment error:', err);
+    
+    if (err instanceof Error) {
+      if ('type' in err && typeof err.type === 'string') {
+        switch (err.type) {
+          case 'card_error':
+          case 'validation_error':
+            setError('Your card was declined. Please try another card.');
+            break;
+          case 'invalid_request_error':
+            setError('Invalid payment request. Please try again.');
+            break;
+          default:
+            setError(err.message);
         }
       } else {
-        setError('An unexpected error occurred. Please try again.');
+        setError(err.message);
       }
-    } finally {
-      setProcessing(false);
-      isSubmittingRef.current = false;
+    } else {
+      setError('An unexpected error occurred. Please try again.');
     }
-  };
+  } finally {
+    setProcessing(false);
+    isSubmittingRef.current = false;
+  }
+};
 
   const isDisabled = !stripe || processing || isSubmittingRef.current || !cardComplete;
 

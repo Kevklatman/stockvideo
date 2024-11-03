@@ -36,36 +36,46 @@ export default function PaymentSuccessPage() {
 
     let redirectTimer: NodeJS.Timeout;
 
-    const verifyAndRedirect = async () => {
-      try {
-        const result = await verifyPayment(paymentIntentId);
+// In success-page.tsx
+const verifyAndRedirect = async () => {
+  try {
+    const result = await verifyPayment(paymentIntentId);
+    
+    if (!mounted) return;
 
-        if (result.verified) {
-          setStatus('success');
-          setShowToast(true);
-          redirectTimer = setTimeout(() => {
-            if (mounted) {
-              router.push('/videos');
-            }
-          }, 5000);
-        } else if (result.purchase?.status === 'pending') {
-          // Payment is still processing
-          setTimeout(verifyAndRedirect, 2000); // Retry after 2 seconds
-        } else {
-          setStatus('error');
-          setMessage('Payment verification failed. Please contact support if your payment was processed.');
+    if (!result) {
+      setStatus('error');
+      setMessage('Failed to verify payment. Please contact support if your payment was processed.');
+      return;
+    }
+
+    if (result.verified) {
+      setStatus('success');
+      setShowToast(true);
+      
+      redirectTimer = setTimeout(() => {
+        if (mounted) {
+          router.push('/videos');
         }
-      } catch (err) {
-        if (!mounted) return;
-        
-        console.error('Payment verification error:', err);
-        setStatus('error');
-        setMessage(err instanceof Error ? 
-          err.message : 
-          'Error verifying payment. Please contact support if your payment was processed.'
-        );
-      }
-    };
+      }, 5000);
+    } else if (result.purchase?.status === 'pending') {
+      // Payment is still processing
+      setTimeout(verifyAndRedirect, 2000); // Retry after 2 seconds
+    } else {
+      setStatus('error');
+      setMessage('Payment verification failed. Please contact support if your payment was processed.');
+    }
+  } catch (err) {
+    if (!mounted) return;
+    
+    console.error('Payment verification error:', err);
+    setStatus('error');
+    setMessage(err instanceof Error ? 
+      err.message : 
+      'Error verifying payment. Please contact support if your payment was processed.'
+    );
+  }
+};
 
     verifyAndRedirect();
 
