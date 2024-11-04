@@ -60,12 +60,13 @@ const PaymentForm = ({ videoId, price, onClose, onSuccess }: PaymentModalProps) 
 
   const verifyPaymentCompletion = async (paymentIntentId: string): Promise<boolean> => {
     const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-    const maxRetries = 5; // Increase the number of retries
-    const retryDelay = 5000; // Increase the delay between retries to 5 seconds
+    const maxRetries = 100; // Further increase the number of retries
+    const retryDelay = 5000; // Set the delay between retries to 5 seconds
     let attempt = 0;
   
     while (attempt < maxRetries) {
       try {
+        console.log(`Attempt ${attempt + 1} to verify payment...`);
         const response = await fetch(
           `/api/payments/verify?videoId=${encodeURIComponent(videoId)}&paymentIntentId=${encodeURIComponent(paymentIntentId)}`, 
           {
@@ -83,16 +84,24 @@ const PaymentForm = ({ videoId, price, onClose, onSuccess }: PaymentModalProps) 
           throw new Error(data.message || 'Failed to verify payment');
         }
   
-        return data.data.verified;
+        if (data.data.verified) {
+          console.log('Payment verified successfully.');
+          return true;
+        } else {
+          console.log('Payment not yet verified.');
+        }
       } catch (error) {
         console.error('Verification error:', error);
-        attempt++;
-        if (attempt < maxRetries) {
-          await delay(retryDelay); // wait before retrying
-        }
+      }
+  
+      attempt++;
+      setVerificationProgress((attempt / maxRetries) * 100);
+      if (attempt < maxRetries) {
+        await delay(retryDelay); // wait before retrying
       }
     }
   
+    console.log('Payment verification failed after maximum retries.');
     return false;
   };
 
