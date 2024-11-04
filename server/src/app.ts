@@ -18,7 +18,7 @@ const app = express();
 
 // Load environment variables early
 dotenv.config({ path: path.join(__dirname, '../.env') });
-
+export const dynamic = 'force-dynamic';
 const requiredEnvVars = [
   'AWS_REGION',
   'AWS_BUCKET_NAME',

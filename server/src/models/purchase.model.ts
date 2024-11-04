@@ -67,6 +67,6 @@ export class Purchase {
   @UpdateDateColumn()
   updatedAt!: Date;
 
-  @Column({ nullable: true })
+  @Column({ nullable: true, type: 'timestamp' })
   completedAt!: Date;
 }

@@ -20,3 +20,6 @@
 {"level":"info","message":"Starting payment intent creation","operation":"createPaymentIntent","timestamp":"2024-11-04 10:27:10","userId":"1b4be118-d4e0-4f68-970b-a95bafcb549a","videoId":"09e875c7-b74b-4a0d-9d77-ef9e7d584b7b"}
 {"level":"info","message":"Starting payment intent creation","operation":"createPaymentIntent","timestamp":"2024-11-04 10:31:58","userId":"1b4be118-d4e0-4f68-970b-a95bafcb549a","videoId":"b34906bb-3929-45de-951e-5273c3069ef3"}
 {"level":"info","message":"Starting payment intent creation","operation":"createPaymentIntent","timestamp":"2024-11-04 10:45:09","userId":"1b4be118-d4e0-4f68-970b-a95bafcb549a","videoId":"b34906bb-3929-45de-951e-5273c3069ef3"}
+{"level":"info","message":"Starting payment intent creation","operation":"createPaymentIntent","timestamp":"2024-11-04 10:47:40","userId":"1b4be118-d4e0-4f68-970b-a95bafcb549a","videoId":"f1d62f6a-824d-4979-8eb4-011e8777cd2b"}
+{"level":"info","message":"Starting payment intent creation","operation":"createPaymentIntent","timestamp":"2024-11-04 10:54:12","userId":"1b4be118-d4e0-4f68-970b-a95bafcb549a","videoId":"0d485723-2ab6-457c-adeb-c7d868d5e116"}
+{"level":"info","message":"Starting payment intent creation","operation":"createPaymentIntent","timestamp":"2024-11-04 10:56:27","userId":"1b4be118-d4e0-4f68-970b-a95bafcb549a","videoId":"b3b1bcc7-12b8-40ba-b4de-c4d41d94d00d"}
