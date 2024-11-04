@@ -72,6 +72,14 @@ export class VideoResponseDto {
   @IsOptional()
   tags?: string[];
 
+  @IsString()
+  @IsOptional()
+  stripeProductId?: string;
+
+  @IsString()
+  @IsOptional()
+  stripePriceId?: string;
+
   constructor(partial: Partial<VideoResponseDto>) {
     Object.assign(this, partial);
   }

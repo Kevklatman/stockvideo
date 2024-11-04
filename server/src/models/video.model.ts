@@ -55,6 +55,12 @@ export class Video {
   @Column()
   fullVideoUrl!: string;
 
+  @Column({ nullable: true })
+  stripeProductId!: string;
+
+  @Column({ nullable: true })
+  stripePriceId!: string;
+
   @Column()
   userId!: string;
 
