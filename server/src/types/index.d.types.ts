@@ -133,7 +133,12 @@ export interface VideoUploadResult {
 }
 
 export interface PurchaseStatus {
-  status: 'pending' | 'completed' | 'failed';
+  status: 'pending' | 'completed' | 'failed'| 'cancelled'| 'payment_failed';
+  message?: string;
+}
+
+export interface Status {
+  status: 'succeeded' | 'canceled' | 'processing' | 'payment_failed';
   message?: string;
 }
 

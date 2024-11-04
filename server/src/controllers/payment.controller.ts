@@ -5,6 +5,7 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import { PaymentError } from '../types/errors';
 import { handleControllerError } from '../utils/error-handler';
 import Stripe from 'stripe';
+import { AuthenticatedRequest } from '../types';
 
 export class PaymentController {
   static async createPaymentIntent(req: AuthRequest, res: Response) {
@@ -109,10 +110,10 @@ export class PaymentController {
   }
 
 // In payment.controller.ts
-static async verifyPayment(req: AuthRequest, res: Response) {
+static async verifyPayment(req: AuthenticatedRequest, res: Response) {
   try {
+    const { videoId, paymentIntentId } = req.body;
     const userId = req.user?.id;
-    const { paymentIntentId, videoId, purchaseId } = req.params;
 
     if (!userId) {
       return res.status(401).json({
@@ -122,26 +123,19 @@ static async verifyPayment(req: AuthRequest, res: Response) {
       });
     }
 
-      if (!videoId) {
-        return res.status(400).json({
-          status: 'error',
-          code: 'MISSING_VIDEO_ID',
-          message: 'Video ID is required'
-        });
-      }
+    if (!videoId || !paymentIntentId) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'MISSING_FIELDS',
+        message: 'Video ID and Payment Intent ID are required'
+      });
+    }
 
-      console.log('Verifying payment:', { userId, videoId });
-
-      const verified = await PaymentService.verifyPurchase(userId, videoId);
-
-      console.log('Payment verification result:', { verified });
+    const verificationResult = await PaymentService.verifyPurchase(userId, videoId, paymentIntentId);
 
     return res.json({
       status: 'success',
-      data: {
-        verified: verified.verified,
-        purchase: verified.purchase
-      }
+      data: verificationResult
     });
   } catch (error) {
     return handleControllerError(error, res);

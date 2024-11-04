@@ -100,11 +100,17 @@ app.post('/api/payments/webhook',
         apiVersion: '2023-10-16'
       });
 
-      const event = stripe.webhooks.constructEvent(
-        req.body,
-        sig,
-        process.env.STRIPE_WEBHOOK_SECRET
-      );
+      let event;
+      try {
+        event = stripe.webhooks.constructEvent(
+          req.body,
+          sig,
+          process.env.STRIPE_WEBHOOK_SECRET
+        );
+      } catch (err) {
+        console.error('Error constructing webhook event:', err);
+        return res.status(400).json({ error: 'Webhook signature verification failed' });
+      }
 
       console.log('Webhook event:', {
         type: event.type,
@@ -117,12 +123,21 @@ app.post('/api/payments/webhook',
         }
       });
 
-      await PaymentService.handleWebhook(event);
-      
-      res.json({ received: true });
+      try {
+        await PaymentService.handleWebhook(event);
+        console.log('Webhook handled successfully');
+        res.json({ received: true });
+      } catch (err) {
+        console.error('Error handling webhook:', err);
+        // Respond with 200 to acknowledge receipt, even if processing failed
+        res.status(200).json({ 
+          received: true, 
+          warning: 'Event received but processing failed' 
+        });
+      }
     } catch (err) {
-      console.error('Webhook error:', err);
-      return res.status(400).json({
+      console.error('Unhandled webhook error:', err);
+      return res.status(500).json({
         error: err instanceof Error ? err.message : 'Unknown error'
       });
     }

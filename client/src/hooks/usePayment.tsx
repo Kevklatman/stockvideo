@@ -56,13 +56,29 @@ export function usePayment() {
     }
   }, []);
 
-  const verifyPayment = useCallback(async (paymentIntentId: string): Promise<VerificationResult | null> => {
+  const verifyPayment = useCallback(async (
+    videoId: string,
+    paymentIntentId: string
+  ): Promise<VerificationResult | null> => {
+    if (!videoId) {
+      throw new Error('Video ID is required');
+    }
+
+    if (!paymentIntentId) {
+      throw new Error('Payment Intent ID is required');
+    }
+
     try {
-      const response = await fetch(`/api/payments/verify/${paymentIntentId}`, {
+      const response = await fetch('/api/payments/verify', {
+        method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
           'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify({
+          videoId,
+          paymentIntentId
+        })
       });
 
       const data = await response.json();
@@ -74,7 +90,8 @@ export function usePayment() {
       return data.data;
     } catch (err) {
       console.error('Verification error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to verify payment');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to verify payment';
+      setError(errorMessage);
       return null;
     }
   }, []);

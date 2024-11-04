@@ -4,7 +4,7 @@ import { useState, useRef, SyntheticEvent } from 'react';
 import { useAuth } from '@/providers/auth-provider';
 import { Play, Lock } from 'lucide-react';
 import { PaymentModal } from './PaymentModal';
-import { usePayment } from '@/hooks/usePayment';
+import { api } from '@/lib/api';
 
 interface VideoCardProps {
   id: string;
@@ -44,7 +44,6 @@ export function VideoCard({
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const { user, isInitialized } = useAuth();
-  const { verifyPayment } = usePayment();
 
   const isOwner = user?.id === authorId;
   const canPlayVideo = isOwner || localPurchased;
@@ -77,7 +76,7 @@ export function VideoCard({
     try {
       await videoRef.current?.play();
     } catch (error) {
-      console.log('Error playing video:', error);
+      console.error('Error playing video:', error);
       setPlaybackError('Error playing video');
     }
   };
@@ -91,43 +90,31 @@ export function VideoCard({
     setIsPlaying(false);
   };
 
-// src/components/features/videos/video-card.tsx
-// Update the handlePurchaseSuccess function:
+  const handlePurchaseSuccess = async () => {
+    setIsPurchasing(true);
+    try {
+      console.log('Verifying purchase for video:', id);
+      const verificationResult = await api.payments.verifyPurchase(id);
 
-const handlePurchaseSuccess = async () => {
-  setIsPurchasing(true);
-  try {
-    const response = await fetch(`/api/videos/${id}/verify-purchase`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-      },
-      body: JSON.stringify({
-        videoId: id,
-        purchaseId: localStorage.getItem(`purchase_${id}`), // Add this if you're storing the purchaseId
-      })
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Failed to verify purchase');
+      if (verificationResult.verified) {
+        console.log('Purchase verified successfully');
+        setLocalPurchased(true);
+        setShowPayment(false);
+      } else {
+        console.error('Purchase verification failed');
+        throw new Error('Purchase verification failed');
+      }
+    } catch (error) {
+      console.error('Error verifying purchase:', error);
+      if (error instanceof Error) {
+        throw new Error(`Purchase verification failed: ${error.message}`);
+      } else {
+        throw new Error('Purchase verification failed');
+      }
+    } finally {
+      setIsPurchasing(false);
     }
-
-    const data = await response.json();
-    if (data.verified) {
-      setLocalPurchased(true);
-      setShowPayment(false);
-    } else {
-      throw new Error('Purchase not verified');
-    }
-  } catch (error) {
-    console.error('Error verifying purchase:', error);
-    alert('Error verifying purchase. Please contact support.');
-  } finally {
-    setIsPurchasing(false);
-  }
-};
+  };
 
   return (
     <div className="rounded-lg overflow-hidden shadow-lg bg-black">
@@ -149,7 +136,7 @@ const handlePurchaseSuccess = async () => {
           onEnded={handleVideoEnd}
           onPause={handleVideoPause}
           onError={(e: SyntheticEvent<HTMLVideoElement, Event>) => {
-            console.log('Video error:', {
+            console.error('Video error:', {
               error: e.currentTarget.error,
               src: e.currentTarget.src
             });
