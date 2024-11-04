@@ -21,6 +21,7 @@ router.get('/', VideoController.getAllVideos);
 
 // Protected routes
 router.use(authMiddleware);
+router.post("/upload-url", VideoController.getUploadUrl);
 
 router.post(
   "/upload",
