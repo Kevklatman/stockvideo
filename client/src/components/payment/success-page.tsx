@@ -85,7 +85,7 @@ export default function PaymentSuccessPage() {
         clearTimeout(redirectTimer);
       }
     };
-  }, [paymentIntentId, videoId, router, mounted, verifyPayment]); //
+  }, [paymentIntentId, videoId, router, mounted, verifyPayment]); // Update dependencies
 
   const renderContent = () => {
     switch (status) {

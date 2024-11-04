@@ -101,6 +101,19 @@ export class PaymentService {
       }
   
       try {
+        // Create a new purchase record
+        console.log('Creating purchase record');
+        const purchase = this.purchaseRepository.create({
+          userId,
+          videoId,
+          amount: video.price,
+          status: 'pending'
+        });
+  
+        console.log('Saving purchase record');
+        const savedPurchase = await this.purchaseRepository.save(purchase);
+        console.log('Purchase record created:', savedPurchase);
+  
         // Convert price to cents for Stripe
         const amountInCents = Math.round(video.price * 100);
         console.log('Creating Stripe payment intent:', { 
@@ -116,7 +129,8 @@ export class PaymentService {
           currency: 'usd',
           metadata: {
             videoId,
-            userId
+            userId,
+            purchaseId: savedPurchase.id // Ensure purchaseId is included in metadata
           }
         });
   
@@ -130,19 +144,9 @@ export class PaymentService {
           throw new PaymentError('Failed to generate client secret');
         }
   
-        // Create a new purchase record
-        console.log('Creating purchase record');
-        const purchase = this.purchaseRepository.create({
-          userId,
-          videoId,
-          amount: video.price,
-          status: 'pending',
-          stripePaymentId: paymentIntent.id
-        });
-  
-        console.log('Saving purchase record');
-        const savedPurchase = await this.purchaseRepository.save(purchase);
-        console.log('Purchase record created:', savedPurchase);
+        // Update purchase record with Stripe payment ID
+        savedPurchase.stripePaymentId = paymentIntent.id;
+        await this.purchaseRepository.save(savedPurchase);
   
         // Cache payment intent details
         await this.cachePaymentIntent(
@@ -811,6 +815,8 @@ static async verifyPurchase(
   paymentIntentId: string
 ): Promise<{ verified: boolean; purchase?: { id: string; status: 'pending' | 'completed' | 'failed'; completedAt?: string } }> {
   try {
+    this.logger.info('Verifying purchase', { userId, videoId, paymentIntentId });
+
     const purchase = await this.purchaseRepository.findOne({
       where: {
         userId,
@@ -820,6 +826,11 @@ static async verifyPurchase(
         completedAt: Not(IsNull())
       }
     });
+
+    if (!purchase) {
+      this.logger.error('Purchase not found during verification', { userId, videoId, paymentIntentId });
+      return { verified: false };
+    }
 
     return {
       verified: !!purchase && !!purchase.completedAt,
@@ -963,5 +974,4 @@ static async verifyWebhookConfiguration(): Promise<void> {
   }
 }
 
-// Call this when your server starts
 }

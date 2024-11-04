@@ -65,6 +65,8 @@ export class PaymentController {
         });
       }
 
+      console.log('Verifying payment', { userId, videoId, paymentIntentId });
+
       const verificationResult = await PaymentService.verifyPurchase(
         userId as string, 
         videoId as string, 
@@ -77,6 +79,7 @@ export class PaymentController {
         data: verificationResult
       });
     } catch (error) {
+      console.error('Payment verification failed:', error);
       return handleControllerError(error, res);
     }
   }

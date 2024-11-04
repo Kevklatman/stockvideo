@@ -54,10 +54,13 @@ console.log('Environment loaded:', {
 
 // Initialize reflect-metadata and dependency injection
 useContainer(Container);
+
+// Stripe webhook endpoint - must be before body parsing middleware
 app.post('/api/payments/webhook',
   express.raw({ type: 'application/json' }), // Ensure raw body parsing
   PaymentController.handleWebhook
 );
+
 // Request logging middleware
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.url}`);
