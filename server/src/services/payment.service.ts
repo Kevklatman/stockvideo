@@ -10,6 +10,7 @@ import { Logger } from "../utils/logger";
 import redisClient from '../config/redis';
 import { toCents, isValidPrice, parsePrice } from '../utils/price';
 import { IsNull, Not } from 'typeorm';
+import { VideoService } from './video.service'; // Ensure you import VideoService
 
 export class PaymentService {
   private static purchaseRepository = AppDataSource.getRepository(Purchase);

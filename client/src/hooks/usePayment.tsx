@@ -60,33 +60,45 @@ export function usePayment() {
     videoId: string,
     paymentIntentId: string
   ): Promise<VerificationResult | null> => {
-    try {
-      const response = await fetch(
-        `/api/payments/verify?videoId=${encodeURIComponent(videoId)}&paymentIntentId=${encodeURIComponent(paymentIntentId)}`, 
-        {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-            'Content-Type': 'application/json'
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+    const maxRetries = 5; // Increase the number of retries
+    const retryDelay = 5000; // Increase the delay between retries to 5 seconds
+    let attempt = 0;
+
+    while (attempt < maxRetries) {
+      try {
+        const response = await fetch(
+          `/api/payments/verify?videoId=${encodeURIComponent(videoId)}&paymentIntentId=${encodeURIComponent(paymentIntentId)}`, 
+          {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+              'Content-Type': 'application/json'
+            }
           }
+        );
+    
+        const data = await response.json();
+    
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to verify payment');
         }
-      );
-  
-      const data = await response.json();
-  
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to verify payment');
+    
+        console.log('Verification result', data.data);
+    
+        return data.data;
+      } catch (err) {
+        console.error('Verification error:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Failed to verify payment';
+        setError(errorMessage);
+        attempt++;
+        if (attempt < maxRetries) {
+          await delay(retryDelay); // wait before retrying
+        }
       }
-  
-      console.log('Verification result', data.data);
-  
-      return data.data;
-    } catch (err) {
-      console.error('Verification error:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to verify payment';
-      setError(errorMessage);
-      return null;
     }
+  
+    return null;
   }, []);
 
   const clearError = useCallback(() => {

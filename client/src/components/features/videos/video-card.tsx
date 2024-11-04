@@ -4,7 +4,6 @@ import { useState, useRef, SyntheticEvent } from 'react';
 import { useAuth } from '@/providers/auth-provider';
 import { Play, Lock } from 'lucide-react';
 import { PaymentModal } from './PaymentModal';
-import { api } from '@/lib/api';
 
 interface VideoCardProps {
   id: string;
@@ -90,18 +89,32 @@ export function VideoCard({
     setIsPlaying(false);
   };
 
-  const handlePurchaseSuccess = async () => {
+  const handlePurchaseSuccess = async (paymentIntentId: string) => {
     setIsPurchasing(true);
     try {
       console.log('Verifying purchase for video:', id);
-      const verificationResult = await api.payments.verifyPurchase(id);
+      const response = await fetch(
+        `/api/payments/verify?videoId=${encodeURIComponent(id)}&paymentIntentId=${encodeURIComponent(paymentIntentId)}`, 
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
 
-      if (verificationResult.verified) {
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to verify payment');
+      }
+
+      if (data.data.verified) {
         console.log('Purchase verified successfully');
         setLocalPurchased(true);
         setShowPayment(false);
       } else {
-        console.error('Purchase verification failed');
         throw new Error('Purchase verification failed');
       }
     } catch (error) {

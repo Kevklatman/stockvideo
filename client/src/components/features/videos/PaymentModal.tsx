@@ -26,7 +26,7 @@ const PaymentForm = ({ videoId, price, onClose, onSuccess }: PaymentModalProps) 
   const router = useRouter();
   const stripe = useStripe();
   const elements = useElements();
-  const { createPaymentIntent, verifyPayment, error: paymentError } = usePayment();
+  const { createPaymentIntent, error: paymentError } = usePayment();
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
   const [cardComplete, setCardComplete] = useState(false);
@@ -59,24 +59,37 @@ const PaymentForm = ({ videoId, price, onClose, onSuccess }: PaymentModalProps) 
   };
 
   const verifyPaymentCompletion = async (paymentIntentId: string): Promise<boolean> => {
-    const maxAttempts = 20; // Try for about 20 seconds
-    const delayMs = 1000; // 1 second between attempts
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+    const maxRetries = 5; // Increase the number of retries
+    const retryDelay = 5000; // Increase the delay between retries to 5 seconds
+    let attempt = 0;
   
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    while (attempt < maxRetries) {
       try {
-        setVerificationProgress((attempt / maxAttempts) * 100);
-        
-        const verificationResult = await verifyPayment(videoId, paymentIntentId);
-        
-        if (verificationResult?.verified && verificationResult.purchase?.completedAt) {
-          setVerificationProgress(100);
-          return true;
+        const response = await fetch(
+          `/api/payments/verify?videoId=${encodeURIComponent(videoId)}&paymentIntentId=${encodeURIComponent(paymentIntentId)}`, 
+          {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+  
+        const data = await response.json();
+  
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to verify payment');
         }
   
-        // Wait before next attempt
-        await new Promise(resolve => setTimeout(resolve, delayMs));
+        return data.data.verified;
       } catch (error) {
-        console.error('Verification attempt failed:', error);
+        console.error('Verification error:', error);
+        attempt++;
+        if (attempt < maxRetries) {
+          await delay(retryDelay); // wait before retrying
+        }
       }
     }
   

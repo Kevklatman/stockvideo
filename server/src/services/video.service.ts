@@ -8,7 +8,9 @@ import {
   VideoProcessingError, 
   StorageError,
   ValidationError,
-  ProcessedVideo
+  ProcessedVideo,
+  PaymentError,
+  PaymentIntent
 } from "../types";
 import * as path from 'path';
 import * as fs from 'fs/promises';
@@ -17,6 +19,7 @@ import redisClient from '../config/redis';
 import { FindOptionsWhere, In } from "typeorm";
 import { CreateVideoDto, UpdateVideoDto } from "../dtos/video.dto";
 import { Logger } from "../utils/logger";
+import Stripe from "stripe";
 
 
 export class VideoService {
@@ -505,5 +508,6 @@ static async findAll(): Promise<Video[]> {
 }
 
 // Removed duplicate searchVideos method
+
 }
 
