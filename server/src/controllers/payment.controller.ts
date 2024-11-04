@@ -2,10 +2,9 @@
 import { Request, Response } from 'express';
 import { PaymentService } from '../services/payment.service';
 import { AuthRequest } from '../middleware/auth.middleware';
-import { PaymentError } from '../types/errors';
 import { handleControllerError } from '../utils/error-handler';
 import Stripe from 'stripe';
-import { AuthenticatedRequest } from '../types';
+import { AuthenticatedRequest } from '../types/';
 
 export class PaymentController {
   static async createPaymentIntent(req: AuthRequest, res: Response) {
@@ -45,108 +44,42 @@ export class PaymentController {
     }
   }
 
-  static async handleWebhook(req: Request, res: Response): Promise<Response> {
+  static async verifyPayment(req: AuthenticatedRequest, res: Response) {
     try {
-      const sig = req.headers['stripe-signature'];
-      
-      console.log('Processing webhook:', {
-        hasSignature: !!sig,
-        signatureValue: sig,
-        bodyType: typeof req.body,
-        bodyLength: req.body?.length,
-        webhookSecret: !!process.env.STRIPE_WEBHOOK_SECRET
-      });
+      const { videoId, paymentIntentId } = req.query;
+      const userId = req.user?.id;
 
-      if (!sig || typeof sig !== 'string') {
-        console.error('Missing or invalid Stripe signature');
-        return res.status(400).json({
+      if (!userId) {
+        return res.status(401).json({
           status: 'error',
-          message: 'Missing Stripe signature'
+          code: 'UNAUTHORIZED',
+          message: 'Authentication required'
         });
       }
 
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-        apiVersion: '2023-10-16'
-      });
-
-      let event: Stripe.Event;
-      try {
-        event = stripe.webhooks.constructEvent(
-          req.body,
-          sig,
-          process.env.STRIPE_WEBHOOK_SECRET!
-        );
-        
-        console.log('Webhook event constructed:', {
-          type: event.type,
-          id: event.id,
-          object: event.data.object
-        });
-
-      } catch (err) {
-        console.error('Webhook signature verification failed:', err);
+      if (!videoId || !paymentIntentId) {
         return res.status(400).json({
           status: 'error',
-          message: `Webhook signature verification failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+          code: 'MISSING_FIELDS',
+          message: 'Video ID and Payment Intent ID are required'
         });
       }
 
-      await PaymentService.handleWebhook(event);
-    
+      const verificationResult = await PaymentService.verifyPurchase(
+        userId as string, 
+        videoId as string, 
+        paymentIntentId as string
+      );
+
+      // Return detailed status information
       return res.json({
         status: 'success',
-        data: {
-          received: true,
-          event: event.type
-        }
+        data: verificationResult
       });
     } catch (error) {
-      console.error('Webhook processing error:', error);
-      return res.status(500).json({
-        status: 'error',
-        message: error instanceof Error ? error.message : 'Unknown webhook processing error'
-      });
+      return handleControllerError(error, res);
     }
   }
-
-// In payment.controller.ts
-// In PaymentController.ts
-static async verifyPayment(req: AuthenticatedRequest, res: Response) {
-  try {
-    const { videoId, paymentIntentId } = req.query;
-    const userId = req.user?.id;
-
-    if (!userId) {
-      return res.status(401).json({
-        status: 'error',
-        code: 'UNAUTHORIZED',
-        message: 'Authentication required'
-      });
-    }
-
-    if (!videoId || !paymentIntentId) {
-      return res.status(400).json({
-        status: 'error',
-        code: 'MISSING_FIELDS',
-        message: 'Video ID and Payment Intent ID are required'
-      });
-    }
-
-    const verificationResult = await PaymentService.verifyPurchase(
-      userId, 
-      videoId as string, 
-      paymentIntentId as string
-    );
-
-    // Return detailed status information
-    return res.json({
-      status: 'success',
-      data: verificationResult
-    });
-  } catch (error) {
-    return handleControllerError(error, res);
-  }
-}
 
   static async getPurchaseHistory(req: AuthRequest, res: Response) {
     try {
@@ -177,6 +110,72 @@ static async verifyPayment(req: AuthenticatedRequest, res: Response) {
     } catch (error) {
       console.error('Purchase history fetch failed:', error);
       return handleControllerError(error, res);
+    }
+  }
+
+  static async handleWebhook(req: Request, res: Response) {
+    try {
+      const sig = req.headers['stripe-signature'];
+      console.log('Webhook received:', {
+        hasSignature: !!sig,
+        contentType: req.headers['content-type'],
+        bodyLength: req.body?.length
+      });
+
+      if (!sig) {
+        console.error('No Stripe signature found');
+        return res.status(400).json({ error: 'No Stripe signature found' });
+      }
+
+      if (!process.env.STRIPE_WEBHOOK_SECRET) {
+        console.error('No webhook secret configured');
+        return res.status(500).json({ error: 'Webhook secret not configured' });
+      }
+
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+        apiVersion: '2023-10-16'
+      });
+
+      let event;
+      try {
+        event = stripe.webhooks.constructEvent(
+          req.body, // Raw body
+          sig,
+          process.env.STRIPE_WEBHOOK_SECRET
+        );
+      } catch (err) {
+        console.error('Error constructing webhook event:', err);
+        return res.status(400).json({ error: 'Webhook signature verification failed' });
+      }
+
+      console.log('Webhook event:', {
+        type: event.type,
+        id: event.id,
+        data: {
+          object: {
+            id: (event.data.object as { id: string }).id,
+            status: 'status' in event.data.object ? event.data.object.status : undefined
+          }
+        }
+      });
+
+      try {
+        await PaymentService.handleWebhook(event);
+        console.log('Webhook handled successfully');
+        res.json({ received: true });
+      } catch (err) {
+        console.error('Error handling webhook:', err);
+        // Respond with 200 to acknowledge receipt, even if processing failed
+        res.status(200).json({ 
+          received: true, 
+          warning: 'Event received but processing failed' 
+        });
+      }
+    } catch (err) {
+      console.error('Unhandled webhook error:', err);
+      return res.status(500).json({
+        error: err instanceof Error ? err.message : 'Unknown error'
+      });
     }
   }
 }

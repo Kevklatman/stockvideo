@@ -56,71 +56,7 @@ console.log('Environment loaded:', {
 useContainer(Container);
 app.post('/api/payments/webhook',
   express.raw({ type: 'application/json' }), // Ensure raw body parsing
-  async (req, res) => {
-    try {
-      const sig = req.headers['stripe-signature'];
-      console.log('Webhook received:', {
-        hasSignature: !!sig,
-        contentType: req.headers['content-type'],
-        bodyLength: req.body?.length
-      });
-
-      if (!sig) {
-        console.error('No Stripe signature found');
-        return res.status(400).json({ error: 'No Stripe signature found' });
-      }
-
-      if (!process.env.STRIPE_WEBHOOK_SECRET) {
-        console.error('No webhook secret configured');
-        return res.status(500).json({ error: 'Webhook secret not configured' });
-      }
-
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-        apiVersion: '2023-10-16'
-      });
-
-      let event;
-      try {
-        event = stripe.webhooks.constructEvent(
-          req.body, // Raw body
-          sig,
-          process.env.STRIPE_WEBHOOK_SECRET
-        );
-      } catch (err) {
-        console.error('Error constructing webhook event:', err);
-        return res.status(400).json({ error: 'Webhook signature verification failed' });
-      }
-
-      console.log('Webhook event:', {
-        type: event.type,
-        id: event.id,
-        data: {
-          object: {
-            id: (event.data.object as { id: string }).id,
-            status: 'status' in event.data.object ? event.data.object.status : undefined
-          }
-        }
-      });
-
-      try {
-        await PaymentService.handleWebhook(event);
-        console.log('Webhook handled successfully');
-        res.json({ received: true });
-      } catch (err) {
-        console.error('Error handling webhook:', err);
-        // Respond with 200 to acknowledge receipt, even if processing failed
-        res.status(200).json({ 
-          received: true, 
-          warning: 'Event received but processing failed' 
-        });
-      }
-    } catch (err) {
-      console.error('Unhandled webhook error:', err);
-      return res.status(500).json({
-        error: err instanceof Error ? err.message : 'Unknown error'
-      });
-    }
-  }
+  PaymentController.handleWebhook
 );
 // Request logging middleware
 app.use((req, res, next) => {
