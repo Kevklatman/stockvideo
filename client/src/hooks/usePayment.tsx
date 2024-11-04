@@ -61,8 +61,8 @@ export function usePayment() {
     paymentIntentId: string
   ): Promise<VerificationResult | null> => {
     const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-    const maxRetries = 5; // Increase the number of retries
-    const retryDelay = 5000; // Increase the delay between retries to 5 seconds
+    const maxRetries = 10; // Increase the number of retries
+    const retryDelay = 2000; // Increase the delay between retries to 5 seconds
     let attempt = 0;
 
     while (attempt < maxRetries) {
