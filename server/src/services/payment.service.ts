@@ -154,7 +154,9 @@ export class PaymentService {
         return {
           clientSecret: paymentIntent.client_secret,
           amount: video.price,
-          currency: 'usd'
+          currency: 'usd',
+          purchaseId: savedPurchase.id,
+          paymentIntentId: paymentIntent.id
         };
       } finally {
         // Release lock regardless of outcome
