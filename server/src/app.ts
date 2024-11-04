@@ -54,29 +54,8 @@ console.log('Environment loaded:', {
 
 // Initialize reflect-metadata and dependency injection
 useContainer(Container);
-
-// Request logging middleware
-app.use((req, res, next) => {
-  console.log(`${req.method} ${req.url}`);
-  next();
-});
-
-// Trust proxy if behind reverse proxy
-if (process.env.NODE_ENV === 'production') {
-  app.set('trust proxy', 1);
-}
-
-// Security middleware (except CORS and body parsing)
-app.use(security.helmet);
-app.use(security.securityHeaders);
-app.use(express.json({limit: '1mb'})); // or any larger size you need
-app.use(express.urlencoded({limit: '1mb', extended: true}));
-// Stripe webhook endpoint - must be before body parsing middleware
-// In your webhook route handler
-// This needs to be BEFORE any body parsing middleware
-// This needs to be BEFORE any other middleware that parses the body
 app.post('/api/payments/webhook',
-  express.raw({type: 'application/json'}),
+  express.raw({ type: 'application/json' }), // Ensure raw body parsing
   async (req, res) => {
     try {
       const sig = req.headers['stripe-signature'];
@@ -103,7 +82,7 @@ app.post('/api/payments/webhook',
       let event;
       try {
         event = stripe.webhooks.constructEvent(
-          req.body,
+          req.body, // Raw body
           sig,
           process.env.STRIPE_WEBHOOK_SECRET
         );
@@ -143,6 +122,27 @@ app.post('/api/payments/webhook',
     }
   }
 );
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.url}`);
+  next();
+});
+
+// Trust proxy if behind reverse proxy
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
+
+// Security middleware (except CORS and body parsing)
+app.use(security.helmet);
+app.use(security.securityHeaders);
+app.use(express.json({limit: '1mb'})); // or any larger size you need
+app.use(express.urlencoded({limit: '1mb', extended: true}));
+// Stripe webhook endpoint - must be before body parsing middleware
+// In your webhook route handler
+// This needs to be BEFORE any body parsing middleware
+// This needs to be BEFORE any other middleware that parses the body
+
 
 // Regular CORS for all other routes
 app.use(security.cors);
