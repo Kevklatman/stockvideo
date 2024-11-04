@@ -96,7 +96,14 @@ export interface PaymentIntentResponse {
   purchaseId: string;
   paymentIntentId: string;
 }
-
+export interface VerificationResult {
+  verified: boolean;
+  purchase?: {
+    id: string;
+    status: 'pending' | 'completed' | 'failed';
+    completedAt?: string;
+  };
+}
 export interface PaymentMethod {
   id: string;
   type: string;

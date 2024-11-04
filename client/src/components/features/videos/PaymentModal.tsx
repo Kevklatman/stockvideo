@@ -61,7 +61,7 @@ const PaymentForm = ({ videoId, price, onClose, onSuccess }: PaymentModalProps) 
   const verifyPaymentCompletion = async (paymentIntentId: string): Promise<boolean> => {
     const maxAttempts = 20; // Try for about 20 seconds
     const delayMs = 1000; // 1 second between attempts
-
+  
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         setVerificationProgress((attempt / maxAttempts) * 100);
@@ -72,14 +72,14 @@ const PaymentForm = ({ videoId, price, onClose, onSuccess }: PaymentModalProps) 
           setVerificationProgress(100);
           return true;
         }
-
+  
         // Wait before next attempt
         await new Promise(resolve => setTimeout(resolve, delayMs));
       } catch (error) {
         console.error('Verification attempt failed:', error);
       }
     }
-
+  
     return false;
   };
 

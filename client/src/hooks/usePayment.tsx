@@ -60,33 +60,24 @@ export function usePayment() {
     videoId: string,
     paymentIntentId: string
   ): Promise<VerificationResult | null> => {
-    if (!videoId) {
-      throw new Error('Video ID is required');
-    }
-
-    if (!paymentIntentId) {
-      throw new Error('Payment Intent ID is required');
-    }
-
     try {
-      const response = await fetch(`/api/payments/verify/${videoId}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          videoId,
-          paymentIntentId
-        })
-      });
-
+      const response = await fetch(
+        `/api/payments/verify?videoId=${encodeURIComponent(videoId)}&paymentIntentId=${encodeURIComponent(paymentIntentId)}`, 
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+  
       const data = await response.json();
-
+  
       if (!response.ok) {
         throw new Error(data.message || 'Failed to verify payment');
       }
-
+  
       return data.data;
     } catch (err) {
       console.error('Verification error:', err);

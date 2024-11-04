@@ -1,13 +1,14 @@
 'use client';
 
-// success-page.tsx
-import { useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { CheckCircle, XCircle } from 'lucide-react';
-import { usePayment } from '@/hooks/usePayment';
-import { Toast } from '@/components/Toast';
+import { CheckCircle, XCircle } from "lucide-react";
+import { LoadingSpinner } from "../ui/loading-spinner";
+import { Toast } from "../Toast";
+import { usePayment } from "@/hooks/usePayment";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
+// success-page.tsx
 export default function PaymentSuccessPage() {
   const [mounted, setMounted] = useState(true);
   const [status, setStatus] = useState<'processing' | 'success' | 'error'>('processing');
@@ -19,6 +20,7 @@ export default function PaymentSuccessPage() {
   const { verifyPayment } = usePayment();
   
   const paymentIntentId = searchParams?.get('payment_intent');
+  const videoId = searchParams?.get('video_id'); // Add this line
 
   // Handle component mounting/unmounting
   useEffect(() => {
@@ -28,7 +30,7 @@ export default function PaymentSuccessPage() {
 
   // Handle payment verification
   useEffect(() => {
-    if (!paymentIntentId || !mounted) {
+    if (!paymentIntentId || !videoId || !mounted) { // Update condition
       setStatus('error');
       setMessage('Invalid payment session');
       return;
@@ -36,56 +38,54 @@ export default function PaymentSuccessPage() {
 
     let redirectTimer: NodeJS.Timeout;
 
-// In success-page.tsx
-const verifyAndRedirect = async () => {
-  try {
-    const result = await verifyPayment(paymentIntentId);
-    
-    if (!mounted) return;
+    const verifyAndRedirect = async () => {
+      try {
+        const result = await verifyPayment(videoId, paymentIntentId);
+        
+        if (!mounted) return;
 
-    if (!result) {
-      setStatus('error');
-      setMessage('Failed to verify payment. Please contact support if your payment was processed.');
-      return;
-    }
-
-    if (result.verified) {
-      setStatus('success');
-      setShowToast(true);
-      
-      redirectTimer = setTimeout(() => {
-        if (mounted) {
-          router.push('/videos');
+        if (!result) {
+          setStatus('error');
+          setMessage('Failed to verify payment. Please contact support if your payment was processed.');
+          return;
         }
-      }, 5000);
-    } else if (result.purchase?.status === 'pending') {
-      // Payment is still processing
-      setTimeout(verifyAndRedirect, 2000); // Retry after 2 seconds
-    } else {
-      setStatus('error');
-      setMessage('Payment verification failed. Please contact support if your payment was processed.');
-    }
-  } catch (err) {
-    if (!mounted) return;
-    
-    console.error('Payment verification error:', err);
-    setStatus('error');
-    setMessage(err instanceof Error ? 
-      err.message : 
-      'Error verifying payment. Please contact support if your payment was processed.'
-    );
-  }
-};
+
+        if (result.verified) {
+          setStatus('success');
+          setShowToast(true);
+          
+          redirectTimer = setTimeout(() => {
+            if (mounted) {
+              router.push('/videos');
+            }
+          }, 5000);
+        } else if (result.purchase?.status === 'pending') {
+          // Payment is still processing
+          setTimeout(verifyAndRedirect, 2000); // Retry after 2 seconds
+        } else {
+          setStatus('error');
+          setMessage('Payment verification failed. Please contact support if your payment was processed.');
+        }
+      } catch (err) {
+        if (!mounted) return;
+        
+        console.error('Payment verification error:', err);
+        setStatus('error');
+        setMessage(err instanceof Error ? 
+          err.message : 
+          'Error verifying payment. Please contact support if your payment was processed.'
+        );
+      }
+    };
 
     verifyAndRedirect();
 
-    // Cleanup
     return () => {
       if (redirectTimer) {
         clearTimeout(redirectTimer);
       }
     };
-  }, [paymentIntentId, router, mounted, verifyPayment]);
+  }, [paymentIntentId, videoId, router, mounted, verifyPayment]); //
 
   const renderContent = () => {
     switch (status) {

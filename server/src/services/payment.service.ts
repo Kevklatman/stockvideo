@@ -5,7 +5,7 @@ import { Purchase } from "../models/purchase.model";
 import { Video } from "../models/video.model";
 import { User } from "../models/user.model";
 import { PaymentError } from "../types/errors";
-import { PaymentIntent, PurchaseStatus, ValidationError } from "../types";
+import { PaymentIntent, PurchaseStatus, ValidationError, VerificationResult } from "../types";
 import { Logger } from "../utils/logger";
 import redisClient from '../config/redis';
 import { toCents, isValidPrice, parsePrice } from '../utils/price';
@@ -539,15 +539,6 @@ static async handleWebhook(event: Stripe.Event): Promise<void> {
   });
 
   try {
-    // Validate event before processing
-    this.validateWebhookEvent(event);
-
-    eventLogger.info('Processing webhook event', {
-      type: event.type,
-      id: event.id,
-      objectId: 'id' in event.data.object ? event.data.object.id : 'unknown'
-    });
-
     if (event.type === 'payment_intent.succeeded') {
       const paymentIntent = event.data.object as Stripe.PaymentIntent;
       
@@ -555,13 +546,13 @@ static async handleWebhook(event: Stripe.Event): Promise<void> {
         eventLogger.error('Invalid payment metadata', { metadata: paymentIntent.metadata });
         return;
       }
-  
+
       const lockToken = await this.acquireFulfillmentLock(paymentIntent.id);
       if (!lockToken) {
-        eventLogger.info('Fulfillment already in progress', { paymentIntentId: paymentIntent.id });
+        eventLogger.info('Fulfillment already in progress');
         return;
       }
-  
+
       try {
         await AppDataSource.transaction(async transactionalEntityManager => {
           const purchase = await transactionalEntityManager
@@ -571,24 +562,28 @@ static async handleWebhook(event: Stripe.Event): Promise<void> {
             })
             .setLock('pessimistic_write')
             .getOne();
-  
+
           if (!purchase) {
             throw new PaymentError(`Purchase not found: ${paymentIntent.metadata.purchaseId}`);
           }
-  
+
           if (purchase.status === 'completed') {
             eventLogger.info('Purchase already completed', { purchaseId: purchase.id });
             return;
           }
-  
-          // Set completedAt to when Stripe processed the payment
+
           purchase.status = 'completed';
           purchase.stripePaymentId = paymentIntent.id;
-          purchase.completedAt = new Date(paymentIntent.created * 1000);
+          purchase.completedAt = new Date();
           purchase.amount = this.fromCents(paymentIntent.amount);
-  
+
           await transactionalEntityManager.save(purchase);
           await this.markFulfillmentComplete(paymentIntent.id, purchase.id);
+          
+          eventLogger.info('Purchase marked as completed', {
+            purchaseId: purchase.id,
+            paymentIntentId: paymentIntent.id
+          });
         });
       } finally {
         await this.releaseFulfillmentLock(paymentIntent.id, lockToken);
@@ -809,29 +804,36 @@ static async verifyPurchase(
   userId: string,
   videoId: string,
   paymentIntentId: string
-): Promise<{ verified: boolean; purchase?: { id: string; status: 'pending' | 'completed' | 'failed'; completedAt?: string } }> {
+): Promise<VerificationResult> {
   try {
     const purchase = await this.purchaseRepository.findOne({
       where: {
         userId,
         videoId,
-        stripePaymentId: paymentIntentId,
-        status: 'completed',
-        completedAt: Not(IsNull())
-      }
+        stripePaymentId: paymentIntentId
+      },
+      select: ['id', 'status', 'completedAt']
     });
 
+    if (!purchase) {
+      console.log('No purchase found:', { userId, videoId, paymentIntentId });
+      return {
+        verified: false,
+        purchase: undefined
+      };
+    }
+
     return {
-      verified: !!purchase && !!purchase.completedAt,
-      purchase: purchase ? {
+      verified: purchase.status === 'completed',
+      purchase: {
         id: purchase.id,
         status: purchase.status,
         completedAt: purchase.completedAt?.toISOString()
-      } : undefined
+      }
     };
   } catch (error) {
-    this.logger.error('Purchase verification error:', error);
-    throw new PaymentError('Failed to verify purchase');
+    console.error('Purchase verification error:', error);
+    throw new PaymentError('Failed to verify payment');
   }
 }
 

@@ -12,8 +12,9 @@ router.post('/create-intent', PaymentController.createPaymentIntent);
 
 // Get purchase history
 router.get('/history', PaymentController.getPurchaseHistory);
-router.get('/verify/:paymentIntentId', PaymentController.verifyPayment);
-router.get('/verify/:videoId', PaymentController.verifyPayment);
+router.get('/verify', PaymentController.verifyPayment); // Single endpoint that handles both params
+
+
 
 
 export { router as paymentRouter };

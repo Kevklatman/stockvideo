@@ -110,9 +110,10 @@ export class PaymentController {
   }
 
 // In payment.controller.ts
+// In PaymentController.ts
 static async verifyPayment(req: AuthenticatedRequest, res: Response) {
   try {
-    const { videoId, paymentIntentId } = req.body;
+    const { videoId, paymentIntentId } = req.query;
     const userId = req.user?.id;
 
     if (!userId) {
@@ -131,8 +132,13 @@ static async verifyPayment(req: AuthenticatedRequest, res: Response) {
       });
     }
 
-    const verificationResult = await PaymentService.verifyPurchase(userId, videoId, paymentIntentId);
+    const verificationResult = await PaymentService.verifyPurchase(
+      userId, 
+      videoId as string, 
+      paymentIntentId as string
+    );
 
+    // Return detailed status information
     return res.json({
       status: 'success',
       data: verificationResult
