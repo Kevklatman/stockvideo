@@ -69,7 +69,7 @@ export function usePayment() {
     }
 
     try {
-      const response = await fetch('/api/payments/verify', {
+      const response = await fetch(`/api/payments/verify/${videoId}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,

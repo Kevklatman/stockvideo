@@ -809,7 +809,7 @@ static async verifyPurchase(
   userId: string,
   videoId: string,
   paymentIntentId: string
-): Promise<VerificationResult> {
+): Promise<{ verified: boolean; purchase?: { id: string; status: 'pending' | 'completed' | 'failed'; completedAt?: string } }> {
   try {
     const purchase = await this.purchaseRepository.findOne({
       where: {

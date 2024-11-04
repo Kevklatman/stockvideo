@@ -195,7 +195,8 @@ static async checkAccess(
     }
 
     // Check if user has purchased the video
-    const hasPurchased = await PaymentService.verifyPurchase(userId, videoId);
+    const paymentIntentId = req.body.paymentIntentId;
+    const hasPurchased = await PaymentService.verifyPurchase(userId, videoId, paymentIntentId);
 
     res.json({
       status: 'success',
@@ -693,7 +694,8 @@ static async verifyPurchase(req: AuthRequest, res: Response, next: NextFunction)
     }
 
     // Check if video is purchased
-    const isPurchased = await PaymentService.verifyPurchase(userId, videoId);
+    const paymentIntentId = req.body.paymentIntentId;
+    const isPurchased = await PaymentService.verifyPurchase(userId, videoId, paymentIntentId);
     
     res.json({
       status: 'success',

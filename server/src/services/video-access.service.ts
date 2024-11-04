@@ -189,7 +189,8 @@ export class VideoAccessService {
       }
 
       // Verify purchase
-      const hasPurchased = await PaymentService.verifyPurchase(userId, videoId);
+      const paymentIntentId = 'somePaymentIntentId'; // Replace with actual payment intent ID
+      const hasPurchased = await PaymentService.verifyPurchase(userId, videoId, paymentIntentId);
       if (!hasPurchased) {
         return null;
       }
@@ -238,7 +239,8 @@ export class VideoAccessService {
   static async getDownloadToken(videoId: string, userId: string): Promise<string | null> {
     try {
       // Verify purchase
-      const hasPurchased = await PaymentService.verifyPurchase(userId, videoId);
+      const paymentIntentId = 'somePaymentIntentId'; // Replace with actual payment intent ID
+      const hasPurchased = await PaymentService.verifyPurchase(userId, videoId, paymentIntentId);
       if (!hasPurchased) {
         return null;
       }
