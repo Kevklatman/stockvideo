@@ -73,6 +73,8 @@ export class PaymentController {
         paymentIntentId as string
       );
 
+      console.log('Verification result', { verificationResult });
+
       // Return detailed status information
       return res.json({
         status: 'success',

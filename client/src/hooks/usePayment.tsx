@@ -78,6 +78,8 @@ export function usePayment() {
         throw new Error(data.message || 'Failed to verify payment');
       }
   
+      console.log('Verification result', data.data);
+  
       return data.data;
     } catch (err) {
       console.error('Verification error:', err);

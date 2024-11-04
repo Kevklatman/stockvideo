@@ -168,131 +168,7 @@ export class PaymentService {
         await this.releasePurchaseLock(userId, videoId, lockToken);
       }
 
-      // Start transaction for data consistency
-      return await AppDataSource.transaction(async transactionalEntityManager => {
-        // Verify video exists and get price with pessimistic lock
-        const video = await transactionalEntityManager
-          .createQueryBuilder(Video, 'video')
-          .where('video.id = :videoId', { videoId })
-          .select(['video.id', 'video.price', 'video.title', 'video.userId'])
-          .setLock('pessimistic_read')
-          .getOne();
-  
-        if (!video) {
-          logger.error('Video not found');
-          throw new PaymentError('Video not found');
-        }
-  
-        // Validate video price
-        if (!this.isValidPrice(video.price)) {
-          logger.error('Invalid video price', { price: video.price });
-          throw new PaymentError('Invalid video price');
-        }
-  
-        // Prevent purchasing own video
-        if (video.userId === userId) {
-          logger.error('Cannot purchase own video');
-          throw new PaymentError('Cannot purchase your own video');
-        }
-  
-        // Check for existing completed purchase
-        const existingPurchase = await transactionalEntityManager
-          .createQueryBuilder(Purchase, 'purchase')
-          .where('purchase.userId = :userId', { userId })
-          .andWhere('purchase.videoId = :videoId', { videoId })
-          .andWhere('purchase.status = :status', { status: 'completed' })
-          .getOne();
-  
-        if (existingPurchase) {
-          logger.error('Video already purchased', { purchaseId: existingPurchase.id });
-          throw new PaymentError('Video already purchased');
-        }
-  
-        // Check for pending purchases that aren't expired
-        const pendingPurchase = await transactionalEntityManager
-          .createQueryBuilder(Purchase, 'purchase')
-          .where('purchase.userId = :userId', { userId })
-          .andWhere('purchase.videoId = :videoId', { videoId })
-          .andWhere('purchase.status = :status', { status: 'pending' })
-          .andWhere('purchase.createdAt > :cutoff', { 
-            cutoff: new Date(Date.now() - 30 * 60 * 1000) // 30 minutes ago
-          })
-          .getOne();
-  
-        if (pendingPurchase) {
-          logger.error('Purchase already in progress', { purchaseId: pendingPurchase.id });
-          throw new PaymentError('Purchase already in progress');
-        }
-  
-        // Acquire distributed lock
-        const lockToken = await this.acquirePurchaseLock(userId, videoId);
-        if (!lockToken) {
-          logger.error('Failed to acquire purchase lock');
-          throw new PaymentError('Purchase already in progress');
-        }
-  
-        try {
-          // Create purchase record
-          const purchase = transactionalEntityManager.create(Purchase, {
-            userId,
-            videoId,
-            amount: video.price,
-            status: 'pending'
-          });
-  
-          const savedPurchase = await transactionalEntityManager.save(purchase);
-          logger.info('Purchase record created', { purchaseId: savedPurchase.id });
-  
-          // Create payment intent with Stripe
-          const paymentIntent = await stripe.paymentIntents.create({
-            amount: this.toCents(video.price),
-            currency: 'usd',
-            metadata: {
-              purchaseId: savedPurchase.id,
-              videoId,
-              userId
-            },
-            automatic_payment_methods: {
-              enabled: true
-            },
-            statement_descriptor_suffix: video.title.substring(0, 22),
-            receipt_email: await this.getUserEmail(userId),
-            description: `Video: ${video.title}`
-          });
-  
-          if (!paymentIntent.client_secret) {
-            throw new PaymentError('Failed to generate client secret');
-          }
-  
-          // Update purchase record with Stripe payment ID
-          savedPurchase.stripePaymentId = paymentIntent.id;
-          await transactionalEntityManager.save(savedPurchase);
-  
-          // Cache payment intent details with TTL
-          await this.cachePaymentIntent(
-            paymentIntent.id,
-            savedPurchase.id,
-            videoId,
-            userId
-          );
-  
-          logger.info('Payment intent created successfully', { 
-            paymentIntentId: paymentIntent.id,
-            purchaseId: savedPurchase.id
-          });
-  
-          return {
-            clientSecret: paymentIntent.client_secret,
-            amount: video.price,
-            currency: 'usd',
-            purchaseId: savedPurchase.id,
-            paymentIntentId: paymentIntent.id
-          };
-        } finally {
-          // Always release the lock
-          await this.releasePurchaseLock(userId, videoId, lockToken);
-        }
-      });
+
     } catch (error) {
       logger.error('Payment intent creation failed', {
         error: error instanceof Error ? {
@@ -319,7 +195,6 @@ export class PaymentService {
       );
     }
   }
-  
   // Helper methods
   private static isValidPrice(price: unknown): price is number {
     return (
@@ -831,6 +706,8 @@ static async verifyPurchase(
       this.logger.error('Purchase not found during verification', { userId, videoId, paymentIntentId });
       return { verified: false };
     }
+
+    this.logger.info('Purchase found during verification', { purchase });
 
     return {
       verified: !!purchase && !!purchase.completedAt,
