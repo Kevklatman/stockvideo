@@ -210,34 +210,7 @@ static async verifyPurchase(
     throw error;
   }
 }
-  // Helper methods
-  private static isValidPrice(price: unknown): price is number {
-    return (
-      typeof price === 'number' &&
-      !isNaN(price) &&
-      price > 0 &&
-      price <= 1000000 // $1M max price
-    );
-  }
-  
-  private static toCents(amount: number): number {
-    return Math.round(amount * 100);
-  }
-  
-  private static async getUserEmail(userId: string): Promise<string | undefined> {
-    try {
-      const user = await AppDataSource
-        .getRepository(User)
-        .findOne({
-          where: { id: userId },
-          select: ['email']
-        });
-      return user?.email;
-    } catch (error) {
-      console.error('Error fetching user email:', error);
-      return undefined;
-    }
-  }
+
   
   // Helper methods
   
@@ -407,23 +380,6 @@ protected static async fulfillPayment(
     return this.ALLOWED_WEBHOOK_EVENTS.includes(eventType as any);
   }
 
-  private static validateWebhookEvent(event: Stripe.Event): void {
-    // Validate event type
-    if (!this.isValidWebhookEvent(event.type)) {
-      throw new Error(`Unsupported webhook event type: ${event.type}`);
-    }
-
-    // Validate event data structure
-    if (!event.data?.object) {
-      throw new Error('Invalid event data structure');
-    }
-
-    // For payment_intent events, validate the payment intent object
-    if (event.type.startsWith('payment_intent.') && 
-        (event.data.object as Stripe.PaymentIntent).object !== 'payment_intent') {
-      throw new Error('Invalid payment intent data');
-    }
-  }
 
 // In payment.service.ts, update the handleWebhook method:
 static async handleWebhook(event: Stripe.Event): Promise<void> {
