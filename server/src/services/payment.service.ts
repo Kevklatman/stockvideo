@@ -512,7 +512,7 @@ static async handleWebhook(event: Stripe.Event): Promise<void> {
     options: {
       page?: number;
       limit?: number;
-      status?: PurchaseStatus['status'];
+      status?: 'pending' | 'completed' | 'failed';
     } = {}
   ): Promise<{ purchases: Purchase[]; total: number; pages: number }> {
     try {
@@ -520,25 +520,22 @@ static async handleWebhook(event: Stripe.Event): Promise<void> {
       const limit = options.limit || 10;
       const skip = (page - 1) * limit;
 
-      const [purchases, total] = await this.purchaseRepository.findAndCount({
-        where: { 
-          userId,
-          ...(options.status && { status: options.status })
-        },
+      const [purchases, total] = await AppDataSource.getRepository(Purchase).findAndCount({
+        where: { userId, ...(options.status && { status: options.status }) },
         relations: ['video'],
         order: { createdAt: 'DESC' },
         skip,
-        take: limit
+        take: limit,
       });
 
       return {
         purchases,
         total,
-        pages: Math.ceil(total / limit)
+        pages: Math.ceil(total / limit),
       };
     } catch (error) {
       this.logger.error('Failed to fetch user purchases:', error);
-      throw new PaymentError('Failed to retrieve purchase history');
+      throw new Error('Failed to retrieve purchase history');
     }
   }
 

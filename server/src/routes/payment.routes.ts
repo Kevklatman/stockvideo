@@ -11,5 +11,6 @@ router.get('/verify', PaymentController.verifyPayment);  // Keep as /verify sinc
 router.post('/create-intent', PaymentController.createPaymentIntent);
 router.get('/history', PaymentController.getPurchaseHistory);
 router.get('/status/:paymentIntentId', PaymentController.checkPaymentStatus);
+router.get('/purchases', PaymentController.getUserPurchases);
 
 export { router as paymentRouter };

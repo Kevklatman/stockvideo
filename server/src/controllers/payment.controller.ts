@@ -231,4 +231,32 @@ static async checkPaymentStatus(req: Request, res: Response) {
       });
     }
   }
+
+  static async getUserPurchases(req: AuthRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({
+          status: 'error',
+          message: 'Authentication required'
+        });
+      }
+
+      const { page, limit, status } = req.query;
+
+      const purchases = await PaymentService.getUserPurchases(userId, {
+        page: page ? parseInt(page as string) : undefined,
+        limit: limit ? parseInt(limit as string) : undefined,
+        status: status as 'pending' | 'completed' | 'failed' | undefined,
+      });
+
+      return res.json({
+        status: 'success',
+        data: purchases,
+      });
+    } catch (error) {
+      console.error('Failed to fetch user purchases:', error);
+      return handleControllerError(error, res);
+    }
+  }
 }
