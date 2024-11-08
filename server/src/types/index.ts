@@ -124,8 +124,11 @@ export interface PaymentMeta {
 
 export interface PaymentVerificationResponse {
   verified: boolean;
-  purchaseId?: string;
-  purchaseDate?: string;
+  purchase?: {
+    id: string;
+    status: 'pending' | 'completed' | 'failed';
+    completedAt?: string; // ISO string format
+  };
 }
 
 export interface PaymentResult {

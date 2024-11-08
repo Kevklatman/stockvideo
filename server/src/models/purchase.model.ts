@@ -67,6 +67,10 @@ export class Purchase {
   @UpdateDateColumn()
   updatedAt!: Date;
 
-  @Column({ nullable: true, type: 'timestamp' })
+  @Column({ 
+    type: 'timestamptz', 
+    nullable: true,
+    precision: 3 // Microsecond precision
+  })
   completedAt!: Date;
 }
