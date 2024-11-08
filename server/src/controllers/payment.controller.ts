@@ -45,10 +45,18 @@ export class PaymentController {
   }
 
 // In PaymentController.ts
+// In PaymentController.ts
 static async verifyPayment(req: Request, res: Response) {
   try {
-    const { videoId, paymentIntentId } = req.query;
     const userId = (req as AuthRequest).user?.id;
+    const { videoId, paymentIntentId } = req.query;
+
+    console.log('Payment verification request:', {
+      userId,
+      videoId,
+      paymentIntentId,
+      query: req.query
+    });
 
     if (!userId) {
       return res.status(401).json({
@@ -58,7 +66,7 @@ static async verifyPayment(req: Request, res: Response) {
       });
     }
 
-    if (!videoId || !paymentIntentId) {
+    if (!videoId || !paymentIntentId || typeof videoId !== 'string' || typeof paymentIntentId !== 'string') {
       return res.status(400).json({
         status: 'error',
         code: 'MISSING_PARAMETERS',
@@ -66,17 +74,15 @@ static async verifyPayment(req: Request, res: Response) {
       });
     }
 
-    console.log('Verifying payment:', { userId, videoId, paymentIntentId });
-
-    const verificationResult = await PaymentService.verifyPurchase(
+    const result = await PaymentService.verifyPurchase(
       userId,
-      videoId as string,
-      paymentIntentId as string
+      videoId,
+      paymentIntentId
     );
 
     return res.json({
       status: 'success',
-      data: verificationResult
+      data: result
     });
   } catch (error) {
     console.error('Payment verification failed:', error);

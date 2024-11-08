@@ -1,4 +1,5 @@
 // usePayment.tsx
+import { api } from "@/lib/api";
 import { useState, useCallback } from "react";
 
 interface PaymentIntentResponse {
@@ -56,58 +57,29 @@ export function usePayment() {
     }
   }, []);
 
-  const verifyPayment = useCallback(async (
-    videoId: string,
-    paymentIntentId: string
-  ): Promise<VerificationResult | null> => {
-    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-    const maxRetries = 10;
-    const retryDelay = 2000;
-    let attempt = 0;
+// In usePayment.tsx
+const verifyPayment = useCallback(async (
+  videoId: string,
+  paymentIntentId: string
+): Promise<VerificationResult | null> => {
+  console.log('Starting payment verification:', { videoId, paymentIntentId });
   
-    while (attempt < maxRetries) {
-      try {
-        const response = await fetch(
-          `/api/payments/verify/${encodeURIComponent(videoId)}?paymentIntentId=${encodeURIComponent(paymentIntentId)}`,
-          {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-              'Content-Type': 'application/json'
-            }
-          }
-        );
-  
-        const data = await response.json();
-  
-        if (!response.ok) {
-          throw new Error(data.message || 'Failed to verify payment');
-        }
-  
-        if (data.data.verified) {
-          return data.data;
-        }
-  
-        // Only retry if payment is still pending
-        if (data.data.purchase?.status === 'pending') {
-          attempt++;
-          await delay(retryDelay);
-          continue;
-        }
-  
-        // If payment failed or is in another state, return the result
-        return data.data;
-      } catch (err) {
-        console.error('Verification error:', err);
-        attempt++;
-        if (attempt < maxRetries) {
-          await delay(retryDelay);
-        }
-      }
-    }
-  
+  if (!videoId || !paymentIntentId) {
+    setError('Missing verification parameters');
     return null;
-  }, []);
+  }
+
+  try {
+    const result = await api.payments.verifyPurchase(videoId, paymentIntentId);
+    console.log('Verification result:', result);
+    return result;
+  } catch (err) {
+    console.error('Verification error:', err);
+    const errorMessage = err instanceof Error ? err.message : 'Failed to verify payment';
+    setError(errorMessage);
+    return null;
+  }
+}, []);
 
   const clearError = useCallback(() => {
     setError(null);

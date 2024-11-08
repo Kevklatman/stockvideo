@@ -15,6 +15,13 @@ import { api } from '@/lib/api';
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
+interface VerificationResult {
+  verified: boolean;
+  purchase?: {
+    status: string;
+  };
+}
+
 interface PaymentModalProps {
   videoId: string;
   price: number;
@@ -59,46 +66,53 @@ const PaymentForm = ({ videoId, price, onClose, onSuccess }: PaymentModalProps) 
     }
   };
 
-  const verifyPaymentCompletion = async (paymentIntentId: string): Promise<boolean> => {
-    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-    const maxRetries = 10;
-    const retryDelay = 2000;
-    let attempt = 0;
-  
-    while (attempt < maxRetries) {
-      try {
-        const response = await api.payments.verifyPurchase(videoId, paymentIntentId);
-        
-        if (response.verified) {
-          console.log('Payment verified successfully.');
-          return true;
-        }
-  
-        // If payment is still pending, retry
-        if (response.purchase?.status === 'pending') {
-          console.log('Payment still pending, retrying...');
-          attempt++;
-          if (attempt < maxRetries) {
-            await delay(retryDelay);
-            continue;
+// In PaymentModal.tsx
+const verifyPaymentCompletion = async (paymentIntentId: string): Promise<boolean> => {
+  console.log('Starting verification with:', { videoId, paymentIntentId }); // Add logging
+
+  const maxRetries = 10;
+  const retryDelay = 2000;
+  let attempt = 0;
+
+  while (attempt < maxRetries) {
+    try {
+      console.log(`Verification attempt ${attempt + 1}/${maxRetries}`);
+      const response = await api.get<VerificationResult>(
+        `/api/payments/verify`, 
+        { 
+          params: { 
+            videoId: videoId,  // Explicitly include videoId
+            paymentIntentId: paymentIntentId 
           }
         }
-  
-        // If payment failed or reached max retries
-        return false;
-  
-      } catch (error) {
-        console.error('Verification error:', error);
+      );
+
+      if (!response) {
+        throw new Error('No response from verification endpoint');
+      }
+
+      console.log('Verification response:', response);
+
+      if (response.verified) {
+        return true;
+      } else if (response.purchase?.status === 'pending') {
         attempt++;
-        if (attempt < maxRetries) {
-          await delay(retryDelay);
-        }
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        continue;
+      }
+
+      return false;
+    } catch (err) {
+      console.error('Verification error:', err);
+      attempt++;
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
       }
     }
-  
-    return false;
-  };
+  }
 
+  return false;
+};
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     event.stopPropagation();

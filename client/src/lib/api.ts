@@ -1,5 +1,4 @@
 // app/lib/api.ts
-
 function normalizeUrl(base: string, endpoint: string): string {
   base = base.replace(/\/$/, '');
   endpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
@@ -56,9 +55,10 @@ export interface VideoUrls {
 
 export interface PaymentIntentResponse {
   clientSecret: string;
+  paymentIntentId: string;
   amount: number;
   currency: string;
-  status?: string;
+  purchaseId: string;
 }
 
 export interface PaymentVerificationResponse {
@@ -222,6 +222,7 @@ export async function fetchApi<T>(
     skipAuth = false,
     retries = DEFAULT_RETRY_COUNT,
     onUploadProgress,
+    params,
     ...fetchOptions
   } = options;
 
@@ -245,7 +246,22 @@ export async function fetchApi<T>(
         }
       }
 
-      const url = normalizeUrl(API_URL, endpoint);
+      let url = normalizeUrl(API_URL, endpoint);
+      
+      // Add query parameters if they exist
+      if (params) {
+        const queryParams = new URLSearchParams();
+        Object.entries(params).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            queryParams.append(key, value.toString());
+          }
+        });
+        const queryString = queryParams.toString();
+        if (queryString) {
+          url += `?${queryString}`;
+        }
+      }
+
       console.log('Making request to:', url);
 
       const body = options.body instanceof FormData
@@ -364,12 +380,35 @@ export const api = {
   delete: <T>(endpoint: string, options: Omit<FetchOptions, 'body' | 'method'> = {}) => 
     fetchApi<T>(endpoint, { ...options, method: 'DELETE' }),
 
+  payments: {
+    createIntent: (videoId: string) =>
+      fetchApi<PaymentIntentResponse>('/api/payments/create-intent', {
+        method: 'POST',
+        body: { videoId }
+      }),
+
+    verifyPurchase: (videoId: string, paymentIntentId: string) =>
+      fetchApi<PaymentVerificationResponse>('/api/payments/verify', {
+        params: { videoId, paymentIntentId }
+      }),
+
+    getPurchaseHistory: (params?: { 
+      page?: number; 
+      limit?: number; 
+      status?: 'pending' | 'completed' | 'failed' 
+    }) =>
+      fetchApi<PurchaseHistoryResponse>('/api/payments/history', { params })
+  },
+
   videos: {
     getUploadUrl: (fileType: string) =>
-      api.post<PresignedUploadData>('/api/videos/upload-url', { fileType }),
+      fetchApi<PresignedUploadData>('/api/videos/upload-url', {
+        method: 'POST',
+        body: { fileType }
+      }),
 
     getUrls: (videoId: string) =>
-      api.get<VideoUrls>(`/api/videos/${videoId}/urls`),
+      fetchApi<VideoUrls>(`/api/videos/${videoId}/urls`),
 
     uploadToS3: async (
       presignedData: PresignedUploadData,
@@ -384,74 +423,12 @@ export const api = {
       
       formData.append('file', file);
 
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-
-        if (onProgress) {
-          xhr.upload.onprogress = (event) => {
-            if (event.lengthComputable) {
-              onProgress({
-                loaded: event.loaded,
-                total: event.total
-              });
-            }
-          };
-        }
-
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve();
-          } else {
-            reject(new Error(`Upload failed with status ${xhr.status}`));
-          }
-        };
-
-        xhr.onerror = () => {
-          reject(new Error('Upload failed'));
-        };
-
-        xhr.open('POST', presignedData.url);
-        xhr.send(formData);
+      await fetchApi<void>(presignedData.url, {
+        method: 'POST',
+        body: formData,
+        skipAuth: true,
+        onUploadProgress: onProgress
       });
-    },
-
-    upload: async (
-      file: File,
-      onProgress?: (event: UploadProgressEvent) => void
-    ): Promise<string> => {
-      const presignedData = await api.videos.getUploadUrl(file.type);
-      await api.videos.uploadToS3(presignedData, file, onProgress);
-      
-      const response = await api.post<{ id: string }>('/api/videos', {
-        filename: file.name,
-        fileType: file.type,
-        fileSize: file.size
-      });
-
-      return response.id;
-    },
-
-    delete: (videoId: string) =>
-      api.delete(`/api/videos/${videoId}`)
-  },
-
-// In api.ts, update the payments object
-payments: {
-  createIntent: (videoId: string) =>
-    api.post<PaymentIntentResponse>('/api/payments/create-intent', { videoId }),
-
-  verifyPurchase: (videoId: string, paymentIntentId: string) =>
-    api.get<PaymentVerificationResponse>(`/api/payments/verify`, {
-      params: { videoId, paymentIntentId }
-    }),
-
-  getPurchaseHistory: (params?: { 
-    page?: number; 
-    limit?: number; 
-    status?: 'pending' | 'completed' | 'failed' 
-  }) =>
-    api.get<PurchaseHistoryResponse>('/api/payments/history', { params })
-}
-
-  
+    }
+  }
 };
