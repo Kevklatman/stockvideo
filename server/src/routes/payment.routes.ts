@@ -10,5 +10,6 @@ router.use(authMiddleware);
 router.get('/verify', PaymentController.verifyPayment);  // Keep as /verify since frontend is using query params
 router.post('/create-intent', PaymentController.createPaymentIntent);
 router.get('/history', PaymentController.getPurchaseHistory);
+router.get('/status/:paymentIntentId', PaymentController.checkPaymentStatus);
 
 export { router as paymentRouter };

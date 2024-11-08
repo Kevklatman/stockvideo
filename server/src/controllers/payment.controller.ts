@@ -89,7 +89,51 @@ static async verifyPayment(req: Request, res: Response) {
     return handleControllerError(error, res);
   }
 }
+// In payment.controller.ts
+static async checkPaymentStatus(req: Request, res: Response) {
+  try {
+    const { paymentIntentId } = req.params;
+    
+    if (!paymentIntentId) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Payment Intent ID is required'
+      });
+    }
 
+    // Get payment intent from Stripe
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+      apiVersion: '2023-10-16'
+    });
+
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+
+    console.log('Payment Intent Status:', {
+      id: paymentIntent.id,
+      status: paymentIntent.status,
+      metadata: paymentIntent.metadata
+    });
+
+    // If payment is succeeded but purchase is still pending, complete it
+    if (paymentIntent.status === 'succeeded') {
+      await PaymentService.completePurchase(paymentIntentId);
+    }
+
+    res.json({
+      status: 'success',
+      data: {
+        stripeStatus: paymentIntent.status,
+        metadata: paymentIntent.metadata
+      }
+    });
+  } catch (error) {
+    console.error('Payment status check failed:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+}
   static async getPurchaseHistory(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.id;

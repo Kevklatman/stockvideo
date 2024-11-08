@@ -5,7 +5,7 @@ import { Purchase } from "../models/purchase.model";
 import { Video } from "../models/video.model";
 import { User } from "../models/user.model";
 import { PaymentError } from "../types/errors";
-import { PaymentIntent, PurchaseStatus, ValidationError } from "../types";
+import { PaymentIntent, PaymentIntentResponse, PurchaseStatus, ValidationError } from "../types";
 import { Logger } from "../utils/logger";
 import redisClient from '../config/redis';
 import { toCents, isValidPrice, parsePrice } from '../utils/price';
@@ -40,160 +40,69 @@ export class PaymentService {
 
   static async createPaymentIntent(
     userId: string, 
-    videoId: string, 
-  ): Promise<PaymentIntent> {
+    videoId: string
+  ): Promise<PaymentIntentResponse> {
     const logger = this.logger.child({ 
       userId,
       videoId,
       operation: 'createPaymentIntent'
     });
-  
-    logger.info('Starting payment intent creation');
     
     try {
-      // Validate inputs
-      if (!userId || !videoId) {
-        throw new ValidationError('User ID and Video ID are required');
-      }
-  
       // Initialize Stripe
       const stripe = this.initStripe();
   
       // Verify video exists and get price
-      console.log('Finding video:', videoId);
       const video = await this.videoRepository.findOne({
-        where: { id: videoId },
-        select: ['id', 'price', 'title'] // Add specific fields you need
+        where: { id: videoId }
       });
   
-      console.log('Video lookup result:', video);
-  
       if (!video) {
-        console.error('Video not found:', videoId);
         throw new PaymentError('Video not found');
       }
   
-      if (typeof video.price !== 'number' || video.price <= 0) {
-        console.error('Invalid video price:', video.price);
-        throw new PaymentError('Invalid video price');
-      }
-  
-      // Check if video is already purchased
-      console.log('Checking existing purchase');
-      const existingPurchase = await this.purchaseRepository.findOne({
-        where: { 
-          userId, 
-          videoId,
-          status: 'completed'
-        }
+      // Create purchase record FIRST
+      const purchase = this.purchaseRepository.create({
+        userId,
+        videoId,
+        amount: video.price,
+        status: 'pending'
       });
   
-      if (existingPurchase) {
-        console.error('Video already purchased:', { userId, videoId });
-        throw new PaymentError('Video already purchased');
-      }
+      const savedPurchase = await this.purchaseRepository.save(purchase);
+      logger.info('Created purchase record:', { purchaseId: savedPurchase.id });
   
-      // Acquire lock to prevent duplicate purchases
-      console.log('Acquiring purchase lock');
-      const lockToken = await this.acquirePurchaseLock(userId, videoId);
-      if (!lockToken) {
-        console.error('Failed to acquire purchase lock:', { userId, videoId });
-        throw new PaymentError('Purchase already in progress');
-      }
-  
-      try {
-        // Create a new purchase record
-        console.log('Creating purchase record');
-        const purchase = this.purchaseRepository.create({
+      // Create Stripe PaymentIntent
+      const amountInCents = Math.round(video.price * 100);
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amountInCents,
+        currency: 'usd',
+        metadata: {
+          videoId,
           userId,
-          videoId,
-          amount: video.price,
-          status: 'pending'
-        });
-  
-        console.log('Saving purchase record');
-        const savedPurchase = await this.purchaseRepository.save(purchase);
-        console.log('Purchase record created:', savedPurchase);
-  
-        // Convert price to cents for Stripe
-        const amountInCents = Math.round(video.price * 100);
-        console.log('Creating Stripe payment intent:', { 
-          amount: amountInCents, 
-          currency: 'usd',
-          videoId,
-          userId
-        });
-  
-        // Create Stripe PaymentIntent
-        const paymentIntent = await stripe.paymentIntents.create({
-          amount: amountInCents,
-          currency: 'usd',
-          metadata: {
-            videoId,
-            userId,
-            purchaseId: savedPurchase.id // Ensure purchaseId is included in metadata
-          }
-        });
-  
-        console.log('Payment intent created:', { 
-          intentId: paymentIntent.id, 
-          status: paymentIntent.status,
-          hasClientSecret: !!paymentIntent.client_secret
-        });
-  
-        if (!paymentIntent.client_secret) {
-          throw new PaymentError('Failed to generate client secret');
+          purchaseId: savedPurchase.id
         }
-  
-        // Update purchase record with Stripe payment ID
-        savedPurchase.stripePaymentId = paymentIntent.id;
-        await this.purchaseRepository.save(savedPurchase);
-  
-        // Cache payment intent details
-        await this.cachePaymentIntent(
-          paymentIntent.id,
-          savedPurchase.id,
-          videoId,
-          userId
-        );
-  
-        return {
-          clientSecret: paymentIntent.client_secret,
-          amount: video.price,
-          currency: 'usd',
-          purchaseId: savedPurchase.id,
-          paymentIntentId: paymentIntent.id
-        };
-      } finally {
-        // Release lock regardless of outcome
-        await this.releasePurchaseLock(userId, videoId, lockToken);
-      }
-
-
-    } catch (error) {
-      logger.error('Payment intent creation failed', {
-        error: error instanceof Error ? {
-          message: error.message,
-          stack: error.stack,
-          name: error.name
-        } : 'Unknown error'
       });
   
+      // Update purchase record with payment intent ID
+      savedPurchase.stripePaymentId = paymentIntent.id;
+      await this.purchaseRepository.save(savedPurchase);
   
-      if (error instanceof PaymentError) {
-        throw error;
-      }
+      logger.info('Payment intent created:', {
+        paymentIntentId: paymentIntent.id,
+        purchaseId: savedPurchase.id
+      });
   
-  
-      if (error instanceof Stripe.errors.StripeError) {
-        throw new PaymentError(`Stripe error: ${error.message}`);
-      }
-  
-  
-      throw new PaymentError(
-        'Failed to create payment intent: ' + 
-        (error instanceof Error ? error.message : 'Unknown error')
-      );
+      return {
+        clientSecret: paymentIntent.client_secret!,
+        paymentIntentId: paymentIntent.id,
+        amount: video.price,
+        currency: 'usd',
+        purchaseId: savedPurchase.id
+      };
+    } catch (error) {
+      logger.error('Payment intent creation failed:', error);
+      throw error;
     }
   }
   // Helper methods
@@ -413,94 +322,110 @@ protected static async fulfillPayment(
 
 // In payment.service.ts, update the handleWebhook method:
 static async handleWebhook(event: Stripe.Event): Promise<void> {
-  const eventLogger = this.logger.child({ 
+  const logger = this.logger.child({
     eventId: event.id,
     eventType: event.type
   });
 
+  logger.info('Processing webhook event');
+
   try {
-    // Validate event before processing
-    this.validateWebhookEvent(event);
-
-    eventLogger.info('Processing webhook event', {
-      type: event.type,
-      id: event.id,
-      objectId: 'id' in event.data.object ? event.data.object.id : 'unknown'
-    });
-
     if (event.type === 'payment_intent.succeeded') {
       const paymentIntent = event.data.object as Stripe.PaymentIntent;
       
-      if (!this.validatePaymentMetadata(paymentIntent.metadata)) {
-        eventLogger.error('Invalid payment metadata', { metadata: paymentIntent.metadata });
-        return;
-      }
+      logger.info('Processing payment_intent.succeeded', {
+        paymentIntentId: paymentIntent.id,
+        metadata: paymentIntent.metadata
+      });
 
-      const lockToken = await this.acquireFulfillmentLock(paymentIntent.id);
-      if (!lockToken) {
-        eventLogger.info('Fulfillment already in progress', { paymentIntentId: paymentIntent.id });
-        return;
-      }
+      // Find the pending purchase
+      const purchase = await this.purchaseRepository.findOne({
+        where: {
+          stripePaymentId: paymentIntent.id,
+          status: 'pending'
+        }
+      });
 
-      try {
-        await AppDataSource.transaction(async transactionalEntityManager => {
-          const purchase = await transactionalEntityManager
-            .createQueryBuilder(Purchase, 'purchase')
-            .where('purchase.id = :purchaseId', { 
-              purchaseId: paymentIntent.metadata.purchaseId 
-            })
-            .setLock('pessimistic_write')
-            .getOne();
-
-          if (!purchase) {
-            throw new PaymentError(`Purchase not found: ${paymentIntent.metadata.purchaseId}`);
-          }
-
-          if (purchase.status === 'completed') {
-            eventLogger.info('Purchase already completed', { purchaseId: purchase.id });
-            return;
-          }
-
-          // IMPORTANT: Set completedAt and ensure it's saved
-          const now = new Date();
-          purchase.status = 'completed';
-          purchase.stripePaymentId = paymentIntent.id;
-          purchase.completedAt = now;
-          purchase.updatedAt = now;
-
-          // Log the purchase object before saving
-          console.log('Saving purchase with completedAt:', purchase);
-
-          await transactionalEntityManager.save(Purchase, purchase);
-          
-          // Verify the save worked
-          const savedPurchase = await transactionalEntityManager
-            .createQueryBuilder(Purchase, 'purchase')
-            .where('purchase.id = :id', { id: purchase.id })
-            .getOne();
-            
-          console.log('Verified saved purchase:', savedPurchase);
-
-          await this.markFulfillmentComplete(paymentIntent.id, purchase.id);
+      if (!purchase) {
+        logger.error('No pending purchase found for payment intent', {
+          paymentIntentId: paymentIntent.id
         });
-      } finally {
-        await this.releaseFulfillmentLock(paymentIntent.id, lockToken);
+        return;
       }
+
+      logger.info('Found pending purchase', {
+        purchaseId: purchase.id,
+        currentStatus: purchase.status
+      });
+
+      // Update the purchase
+      purchase.status = 'completed';
+      purchase.completedAt = new Date();
+      purchase.updatedAt = new Date();
+
+      await this.purchaseRepository.save(purchase);
+
+      // Verify the update
+      const verifiedPurchase = await this.purchaseRepository.findOne({
+        where: { id: purchase.id }
+      });
+
+      logger.info('Purchase updated', {
+        purchaseId: verifiedPurchase?.id,
+        newStatus: verifiedPurchase?.status,
+        completedAt: verifiedPurchase?.completedAt
+      });
     }
   } catch (error) {
-    eventLogger.error('Error processing webhook', { 
-      error: error instanceof Error ? {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      } : error 
+    logger.error('Webhook processing error', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
     });
     throw error;
   }
 }
   
   // Helper methods that need to be added
+  static async completePurchase(paymentIntentId: string): Promise<void> {
+    const logger = this.logger.child({
+      paymentIntentId,
+      operation: 'completePurchase'
+    });
   
+    try {
+      const purchase = await this.purchaseRepository.findOne({
+        where: {
+          stripePaymentId: paymentIntentId,
+          status: 'pending'
+        }
+      });
+  
+      if (!purchase) {
+        logger.error('Purchase not found');
+        throw new PaymentError('Purchase not found');
+      }
+  
+      logger.info('Completing purchase', {
+        purchaseId: purchase.id,
+        currentStatus: purchase.status
+      });
+  
+      purchase.status = 'completed';
+      purchase.completedAt = new Date();
+      purchase.updatedAt = new Date();
+  
+      await this.purchaseRepository.save(purchase);
+  
+      logger.info('Purchase completed successfully', {
+        purchaseId: purchase.id,
+        newStatus: purchase.status,
+        completedAt: purchase.completedAt
+      });
+    } catch (error) {
+      logger.error('Purchase completion failed', error);
+      throw error;
+    }
+  }
   private static validatePaymentMetadata(metadata: Stripe.Metadata | null): metadata is Required<{
     purchaseId: string;
     videoId: string;
@@ -704,53 +629,45 @@ static async verifyPurchase(
   paymentIntentId: string
 ): Promise<{ verified: boolean; purchase?: { id: string; status: string; completedAt?: string } }> {
   const logger = this.logger.child({
-    context: 'verifyPurchase',
     userId,
     videoId,
     paymentIntentId
   });
 
   try {
-    logger.info('Verifying purchase');
+    logger.info('Starting purchase verification');
 
-    const purchase = await this.purchaseRepository
-      .createQueryBuilder('purchase')
-      .where('purchase.userId = :userId', { userId })
-      .andWhere('purchase.videoId = :videoId', { videoId })
-      .andWhere('purchase.stripePaymentId = :paymentIntentId', { paymentIntentId })
-      .andWhere('purchase.status = :status', { status: 'completed' })
-      .getOne();
+    // First try to find any purchase matching these parameters
+    const purchase = await this.purchaseRepository.findOne({
+      where: [
+        {
+          userId,
+          videoId,
+          stripePaymentId: paymentIntentId,
+          status: 'completed'
+        },
+        {
+          userId,
+          videoId,
+          stripePaymentId: paymentIntentId,
+          status: 'pending'
+        }
+      ]
+    });
 
-    logger.info('Purchase query result:', { purchase });
+    logger.info('Purchase lookup result:', {
+      found: !!purchase,
+      status: purchase?.status,
+      completedAt: purchase?.completedAt
+    });
 
     if (!purchase) {
-      logger.info('No completed purchase found, checking for pending');
-      
-      // Check for pending purchase
-      const pendingPurchase = await this.purchaseRepository
-        .createQueryBuilder('purchase')
-        .where('purchase.userId = :userId', { userId })
-        .andWhere('purchase.videoId = :videoId', { videoId })
-        .andWhere('purchase.stripePaymentId = :paymentIntentId', { paymentIntentId })
-        .andWhere('purchase.status = :status', { status: 'pending' })
-        .getOne();
-
-      if (pendingPurchase) {
-        return {
-          verified: false,
-          purchase: {
-            id: pendingPurchase.id,
-            status: 'pending'
-          }
-        };
-      }
-
-      logger.info('No purchase found');
+      logger.warn('No purchase found');
       return { verified: false };
     }
 
     return {
-      verified: true,
+      verified: purchase.status === 'completed',
       purchase: {
         id: purchase.id,
         status: purchase.status,
@@ -758,8 +675,8 @@ static async verifyPurchase(
       }
     };
   } catch (error) {
-    logger.error('Purchase verification error:', error);
-    throw new PaymentError('Failed to verify purchase');
+    logger.error('Purchase verification failed:', error);
+    throw error;
   }
 }
 

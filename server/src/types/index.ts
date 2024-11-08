@@ -313,4 +313,6 @@ export class StorageError extends BaseError {
   constructor(message: string) {
     super(message, 'STORAGE_ERROR');
   }
+
+  
 }

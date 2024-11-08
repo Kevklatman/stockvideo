@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import express, { json, raw } from "express";
+import express from "express";
 import dotenv from "dotenv";
 import * as path from 'path';
 import { AppDataSource } from "./config/database";
@@ -10,32 +10,17 @@ import { errorHandler } from "./middleware/error.middleware";
 import { useContainer} from "routing-controllers";
 import { Container } from "typedi";
 import { paymentRouter } from "./routes/payment.routes";
-import { PaymentController } from './controllers/payment.controller';
+import { webhookRouter } from "./routes/webhook.routes";
 import { PaymentService } from './services/payment.service';
 
-const app = express();
-app.post('/api/payments/webhook',
-  express.raw({ type: 'application/json' }), // Ensure raw body parsing
-  PaymentController.handleWebhook
-);
-app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
-  console.log('Received webhook:', {
-    headers: req.headers,
-    body: req.body ? JSON.parse(req.body.toString()) : null
-  });
-  
-  try {
-    await PaymentService.handleWebhook(req.body);
-    res.json({ received: true });
-  } catch (error) {
-    console.error('Webhook handling error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    res.status(400).send(`Webhook Error: ${errorMessage}`);
-  }
-});
 // Load environment variables early
 dotenv.config({ path: path.join(__dirname, '../.env') });
+
+const app = express();
+
 export const dynamic = 'force-dynamic';
+
+// Verify required environment variables
 const requiredEnvVars = [
   'AWS_REGION',
   'AWS_BUCKET_NAME',
@@ -72,41 +57,60 @@ console.log('Environment loaded:', {
 // Initialize reflect-metadata and dependency injection
 useContainer(Container);
 
-// Stripe webhook endpoint - must be before body parsing middleware
-
-// Request logging middleware
-app.use((req, res, next) => {
-  console.log(`${req.method} ${req.url}`);
-  next();
-});
-
 // Trust proxy if behind reverse proxy
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
 }
 
-// Security middleware (except CORS and body parsing)
+// Request logging middleware (except for webhooks)
+app.use((req, res, next) => {
+  if (!req.path.includes('/webhooks/')) {
+    console.log(`${req.method} ${req.url}`);
+  }
+  next();
+});
+
+// Security middleware (except body parsing)
 app.use(security.helmet);
 app.use(security.securityHeaders);
-app.use(express.json({limit: '1mb'})); // or any larger size you need
-app.use(express.urlencoded({limit: '1mb', extended: true}));
-// Stripe webhook endpoint - must be before body parsing middleware
-// In your webhook route handler
-// This needs to be BEFORE any body parsing middleware
-// This needs to be BEFORE any other middleware that parses the body
 
-
-// Regular CORS for all other routes
+// CORS middleware
 app.use(security.cors);
 
-// Body parsing middleware for regular routes
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Webhook routes - must be before body parsing middleware
+app.use('/api/webhooks', webhookRouter);
+
+// Body parsing middleware for non-webhook routes
+app.use((req, res, next) => {
+  if (req.path.includes('/webhooks/')) {
+    next();
+  } else {
+    express.json({
+      limit: '1mb',
+      verify: (req, res, buf) => {
+        (req as any).rawBody = buf;
+      }
+    })(req, res, next);
+  }
+});
+
+app.use((req, res, next) => {
+  if (req.path.includes('/webhooks/')) {
+    next();
+  } else {
+    express.urlencoded({
+      extended: true,
+      limit: '1mb'
+    })(req, res, next);
+  }
+});
+
+// Request sanitization
 app.use(security.sanitizeRequest);
 
+// API routes with rate limiting
 const apiRouter = express.Router();
 
-// Rate limiting for API routes
 apiRouter.use('/auth', security.rateLimits.auth);
 apiRouter.use('/videos/upload', security.rateLimits.upload);
 apiRouter.use('/', security.rateLimits.api);
@@ -149,7 +153,6 @@ app.use((_req, res) => {
 });
 
 // Database connection and server start
-// In app.ts
 async function startServer() {
   try {
     await AppDataSource.initialize();
@@ -188,5 +191,16 @@ startServer();
 // Register shutdown handlers
 process.on('SIGTERM', handleGracefulShutdown);
 process.on('SIGINT', handleGracefulShutdown);
+
+// Handle uncaught errors
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  handleGracefulShutdown();
+});
+
+process.on('unhandledRejection', (error) => {
+  console.error('Unhandled Rejection:', error);
+  handleGracefulShutdown();
+});
 
 export default app;
