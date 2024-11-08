@@ -104,16 +104,7 @@ export interface VerificationResult {
     completedAt?: string;
   };
 }
-export interface PaymentMethod {
-  id: string;
-  type: string;
-  card?: {
-    brand: string;
-    last4: string;
-    expMonth: number;
-    expYear: number;
-  };
-}
+
 
 export interface PaymentMeta {
   purchaseId: string;

@@ -137,10 +137,6 @@ export interface PurchaseStatus {
   message?: string;
 }
 
-export interface Status {
-  status: 'succeeded' | 'canceled' | 'processing' | 'payment_failed';
-  message?: string;
-}
 
 // Stripe related types
 export interface StripeWebhookPayload {
