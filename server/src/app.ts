@@ -60,7 +60,21 @@ app.post('/api/payments/webhook',
   express.raw({ type: 'application/json' }), // Ensure raw body parsing
   PaymentController.handleWebhook
 );
-
+app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+  console.log('Received webhook:', {
+    headers: req.headers,
+    body: req.body ? JSON.parse(req.body.toString()) : null
+  });
+  
+  try {
+    await PaymentService.handleWebhook(req.body);
+    res.json({ received: true });
+  } catch (error) {
+    console.error('Webhook handling error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    res.status(400).send(`Webhook Error: ${errorMessage}`);
+  }
+});
 // Request logging middleware
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.url}`);
