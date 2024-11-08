@@ -435,18 +435,23 @@ export const api = {
       api.delete(`/api/videos/${videoId}`)
   },
 
-  payments: {
-    createIntent: (videoId: string) =>
-      api.post<PaymentIntentResponse>('/api/payments/create-intent', { videoId }),
+// In api.ts, update the payments object
+payments: {
+  createIntent: (videoId: string) =>
+    api.post<PaymentIntentResponse>('/api/payments/create-intent', { videoId }),
 
-    verifyPurchase: (videoId: string) =>
-      api.get<PaymentVerificationResponse>(`/api/payments/verify/${videoId}`),
+  verifyPurchase: (videoId: string, paymentIntentId: string) =>
+    api.get<PaymentVerificationResponse>(`/api/payments/verify`, {
+      params: { videoId, paymentIntentId }
+    }),
 
-    getPurchaseHistory: (params?: { 
-      page?: number; 
-      limit?: number; 
-      status?: 'pending' | 'completed' | 'failed' 
-    }) =>
-      api.get<PurchaseHistoryResponse>('/api/payments/history', { params })
-  }
+  getPurchaseHistory: (params?: { 
+    page?: number; 
+    limit?: number; 
+    status?: 'pending' | 'completed' | 'failed' 
+  }) =>
+    api.get<PurchaseHistoryResponse>('/api/payments/history', { params })
+}
+
+  
 };

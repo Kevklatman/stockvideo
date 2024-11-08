@@ -61,14 +61,14 @@ export function usePayment() {
     paymentIntentId: string
   ): Promise<VerificationResult | null> => {
     const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-    const maxRetries = 10; // Increase the number of retries
-    const retryDelay = 2000; // Increase the delay between retries to 5 seconds
+    const maxRetries = 10;
+    const retryDelay = 2000;
     let attempt = 0;
-
+  
     while (attempt < maxRetries) {
       try {
         const response = await fetch(
-          `/api/payments/verify?videoId=${encodeURIComponent(videoId)}&paymentIntentId=${encodeURIComponent(paymentIntentId)}`, 
+          `/api/payments/verify/${encodeURIComponent(videoId)}?paymentIntentId=${encodeURIComponent(paymentIntentId)}`,
           {
             method: 'GET',
             headers: {
@@ -77,23 +77,31 @@ export function usePayment() {
             }
           }
         );
-    
+  
         const data = await response.json();
-    
+  
         if (!response.ok) {
           throw new Error(data.message || 'Failed to verify payment');
         }
-    
-        console.log('Verification result', data.data);
-    
+  
+        if (data.data.verified) {
+          return data.data;
+        }
+  
+        // Only retry if payment is still pending
+        if (data.data.purchase?.status === 'pending') {
+          attempt++;
+          await delay(retryDelay);
+          continue;
+        }
+  
+        // If payment failed or is in another state, return the result
         return data.data;
       } catch (err) {
         console.error('Verification error:', err);
-        const errorMessage = err instanceof Error ? err.message : 'Failed to verify payment';
-        setError(errorMessage);
         attempt++;
         if (attempt < maxRetries) {
-          await delay(retryDelay); // wait before retrying
+          await delay(retryDelay);
         }
       }
     }

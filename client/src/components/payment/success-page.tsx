@@ -7,6 +7,7 @@ import { usePayment } from "@/hooks/usePayment";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { api } from "@/lib/api";
 
 // success-page.tsx
 export default function PaymentSuccessPage() {
@@ -29,63 +30,64 @@ export default function PaymentSuccessPage() {
   }, []);
 
   // Handle payment verification
-  useEffect(() => {
-    if (!paymentIntentId || !videoId || !mounted) { // Update condition
-      setStatus('error');
-      setMessage('Invalid payment session');
-      return;
-    }
+// In success-page.tsx
+useEffect(() => {
+  if (!paymentIntentId || !videoId || !mounted) {
+    setStatus('error');
+    setMessage('Invalid payment session');
+    return;
+  }
 
-    let redirectTimer: NodeJS.Timeout;
+  let redirectTimer: NodeJS.Timeout;
 
-    const verifyAndRedirect = async () => {
-      try {
-        const result = await verifyPayment(videoId, paymentIntentId);
-        
-        if (!mounted) return;
+  const verifyAndRedirect = async () => {
+    try {
+      const result = await api.payments.verifyPurchase(videoId, paymentIntentId);
+      
+      if (!mounted) return;
 
-        if (!result) {
-          setStatus('error');
-          setMessage('Failed to verify payment. Please contact support if your payment was processed.');
-          return;
-        }
-
-        if (result.verified) {
-          setStatus('success');
-          setShowToast(true);
-          
-          redirectTimer = setTimeout(() => {
-            if (mounted) {
-              router.push('/videos');
-            }
-          }, 5000);
-        } else if (result.purchase?.status === 'pending') {
-          // Payment is still processing
-          setTimeout(verifyAndRedirect, 2000); // Retry after 2 seconds
-        } else {
-          setStatus('error');
-          setMessage('Payment verification failed. Please contact support if your payment was processed.');
-        }
-      } catch (err) {
-        if (!mounted) return;
-        
-        console.error('Payment verification error:', err);
+      if (!result) {
         setStatus('error');
-        setMessage(err instanceof Error ? 
-          err.message : 
-          'Error verifying payment. Please contact support if your payment was processed.'
-        );
+        setMessage('Failed to verify payment. Please contact support if your payment was processed.');
+        return;
       }
-    };
 
-    verifyAndRedirect();
-
-    return () => {
-      if (redirectTimer) {
-        clearTimeout(redirectTimer);
+      if (result.verified) {
+        setStatus('success');
+        setShowToast(true);
+        
+        redirectTimer = setTimeout(() => {
+          if (mounted) {
+            router.push('/videos');
+          }
+        }, 5000);
+      } else if (result.purchase?.status === 'pending') {
+        // Payment is still processing
+        setTimeout(verifyAndRedirect, 2000); // Retry after 2 seconds
+      } else {
+        setStatus('error');
+        setMessage('Payment verification failed. Please contact support if your payment was processed.');
       }
-    };
-  }, [paymentIntentId, videoId, router, mounted, verifyPayment]); // Update dependencies
+    } catch (err) {
+      if (!mounted) return;
+      
+      console.error('Payment verification error:', err);
+      setStatus('error');
+      setMessage(err instanceof Error ? 
+        err.message : 
+        'Error verifying payment. Please contact support if your payment was processed.'
+      );
+    }
+  };
+
+  verifyAndRedirect();
+
+  return () => {
+    if (redirectTimer) {
+      clearTimeout(redirectTimer);
+    }
+  };
+}, [paymentIntentId, videoId, router, mounted, verifyPayment]);
 
   const renderContent = () => {
     switch (status) {

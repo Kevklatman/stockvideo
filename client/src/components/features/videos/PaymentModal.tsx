@@ -11,6 +11,7 @@ import {
 import { StripeCardElementChangeEvent } from '@stripe/stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
 import { X } from 'lucide-react';
+import { api } from '@/lib/api';
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
@@ -60,48 +61,41 @@ const PaymentForm = ({ videoId, price, onClose, onSuccess }: PaymentModalProps) 
 
   const verifyPaymentCompletion = async (paymentIntentId: string): Promise<boolean> => {
     const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-    const maxRetries = 100; // Further increase the number of retries
-    const retryDelay = 5000; // Set the delay between retries to 5 seconds
+    const maxRetries = 10;
+    const retryDelay = 2000;
     let attempt = 0;
   
     while (attempt < maxRetries) {
       try {
-        console.log(`Attempt ${attempt + 1} to verify payment...`);
-        const response = await fetch(
-          `/api/payments/verify?videoId=${encodeURIComponent(videoId)}&paymentIntentId=${encodeURIComponent(paymentIntentId)}`, 
-          {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-              'Content-Type': 'application/json'
-            }
-          }
-        );
-  
-        const data = await response.json();
-  
-        if (!response.ok) {
-          throw new Error(data.message || 'Failed to verify payment');
-        }
-  
-        if (data.data.verified) {
+        const response = await api.payments.verifyPurchase(videoId, paymentIntentId);
+        
+        if (response.verified) {
           console.log('Payment verified successfully.');
           return true;
-        } else {
-          console.log('Payment not yet verified.');
         }
+  
+        // If payment is still pending, retry
+        if (response.purchase?.status === 'pending') {
+          console.log('Payment still pending, retrying...');
+          attempt++;
+          if (attempt < maxRetries) {
+            await delay(retryDelay);
+            continue;
+          }
+        }
+  
+        // If payment failed or reached max retries
+        return false;
+  
       } catch (error) {
         console.error('Verification error:', error);
-      }
-  
-      attempt++;
-      setVerificationProgress((attempt / maxRetries) * 100);
-      if (attempt < maxRetries) {
-        await delay(retryDelay); // wait before retrying
+        attempt++;
+        if (attempt < maxRetries) {
+          await delay(retryDelay);
+        }
       }
     }
   
-    console.log('Payment verification failed after maximum retries.');
     return false;
   };
 

@@ -44,47 +44,45 @@ export class PaymentController {
     }
   }
 
-  static async verifyPayment(req: AuthenticatedRequest, res: Response) {
-    try {
-      const { videoId, paymentIntentId } = req.query;
-      const userId = req.user?.id;
+// In PaymentController.ts
+static async verifyPayment(req: Request, res: Response) {
+  try {
+    const { videoId, paymentIntentId } = req.query;
+    const userId = (req as AuthRequest).user?.id;
 
-      if (!userId) {
-        return res.status(401).json({
-          status: 'error',
-          code: 'UNAUTHORIZED',
-          message: 'Authentication required'
-        });
-      }
-
-      if (!videoId || !paymentIntentId) {
-        return res.status(400).json({
-          status: 'error',
-          code: 'MISSING_FIELDS',
-          message: 'Video ID and Payment Intent ID are required'
-        });
-      }
-
-      console.log('Verifying payment', { userId, videoId, paymentIntentId });
-
-      const verificationResult = await PaymentService.verifyPurchase(
-        userId as string, 
-        videoId as string, 
-        paymentIntentId as string
-      );
-
-      console.log('Verification result', { verificationResult });
-
-      // Return detailed status information
-      return res.json({
-        status: 'success',
-        data: verificationResult
+    if (!userId) {
+      return res.status(401).json({
+        status: 'error',
+        code: 'UNAUTHORIZED',
+        message: 'Authentication required'
       });
-    } catch (error) {
-      console.error('Payment verification failed:', error);
-      return handleControllerError(error, res);
     }
+
+    if (!videoId || !paymentIntentId) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'MISSING_PARAMETERS',
+        message: 'Video ID and Payment Intent ID are required'
+      });
+    }
+
+    console.log('Verifying payment:', { userId, videoId, paymentIntentId });
+
+    const verificationResult = await PaymentService.verifyPurchase(
+      userId,
+      videoId as string,
+      paymentIntentId as string
+    );
+
+    return res.json({
+      status: 'success',
+      data: verificationResult
+    });
+  } catch (error) {
+    console.error('Payment verification failed:', error);
+    return handleControllerError(error, res);
   }
+}
 
   static async getPurchaseHistory(req: AuthRequest, res: Response) {
     try {
