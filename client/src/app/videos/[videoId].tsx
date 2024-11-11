@@ -1,4 +1,3 @@
-// [videoId].tsx
 'use client'
 
 import { useState, useEffect } from 'react';
@@ -9,7 +8,7 @@ import { api, ApiException } from '@/lib/api';
 import VideoPlayer from '@/components/features/videos/VideoPlayer';
 import { PaymentModal } from '@/components/features/videos/PaymentModal';
 import Link from 'next/link';
-import router from 'next/router';
+import { useRouter } from 'next/navigation';
 
 interface Video {
   id: string;
@@ -37,8 +36,10 @@ const LoadingState = () => (
   <div className="max-w-7xl mx-auto px-4 py-6">
     <div className="animate-pulse">
       <div className="aspect-video bg-gray-200 rounded-lg mb-6" />
-      <div className="h-8 bg-gray-200 rounded w-3/4 mb-4" />
-      <div className="h-4 bg-gray-200 rounded w-1/2" />
+      <div className="space-y-4">
+        <div className="h-8 bg-gray-200 rounded w-3/4" />
+        <div className="h-4 bg-gray-200 rounded w-1/2" />
+      </div>
     </div>
   </div>
 );
@@ -63,6 +64,7 @@ const ErrorState = ({ message, onRetry }: { message: string; onRetry?: () => voi
 export default function VideoWatchPage() {
   const { videoId } = useParams<{ videoId: string }>();
   const { user } = useAuth();
+  const router = useRouter();
   const [video, setVideo] = useState<Video | null>(null);
   const [accessStatus, setAccessStatus] = useState<AccessStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -113,6 +115,12 @@ export default function VideoWatchPage() {
     }
   };
 
+  const handlePaymentSuccess = async (paymentIntentId: string) => {
+    if (!videoId) return;
+    
+    router.push(`/payment/success?payment_intent=${paymentIntentId}&video_id=${videoId}`);
+  };
+
   if (isLoading) {
     return <LoadingState />;
   }
@@ -133,7 +141,11 @@ export default function VideoWatchPage() {
         <VideoPlayer 
           videoId={video.id}
           thumbnailUrl={video.thumbnailUrl}
-          url={canWatchFullVideo ? video.fullVideoUrl : video.previewUrl}
+          initialUrls={{
+            streamingUrl: video.fullVideoUrl,
+            previewUrl: video.previewUrl,
+            thumbnailUrl: video.thumbnailUrl
+          }}
           previewMode={!canWatchFullVideo}
           isPurchased={canWatchFullVideo}
           onPurchaseClick={() => !user ? router.push('/login') : setShowPaymentModal(true)}
@@ -203,9 +215,9 @@ export default function VideoWatchPage() {
         <PaymentModal
           videoId={video.id}
           price={video.price}
-          onClose={() => setShowPaymentModal(false)} onSuccess={function (): Promise<void> {
-            throw new Error('Function not implemented.');
-          }}        />
+          onClose={() => setShowPaymentModal(false)}
+          onSuccess={handlePaymentSuccess}
+        />
       )}
     </div>
   );

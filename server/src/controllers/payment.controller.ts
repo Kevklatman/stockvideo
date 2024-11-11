@@ -5,6 +5,7 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import { handleControllerError } from '../utils/error-handler';
 import Stripe from 'stripe';
 import { AuthenticatedRequest } from '../types/';
+import { VideoService } from '../services/video.service';
 
 export class PaymentController {
   static async createPaymentIntent(req: AuthRequest, res: Response) {
@@ -241,18 +242,40 @@ static async checkPaymentStatus(req: Request, res: Response) {
           message: 'Authentication required'
         });
       }
-
+  
       const { page, limit, status } = req.query;
-
+  
       const purchases = await PaymentService.getUserPurchases(userId, {
         page: page ? parseInt(page as string) : undefined,
         limit: limit ? parseInt(limit as string) : undefined,
         status: status as 'pending' | 'completed' | 'failed' | undefined,
       });
-
+  
+      // Fetch video URLs for completed purchases
+      const purchasesWithUrls = await Promise.all(
+        purchases.purchases.map(async (purchase) => {
+          if (purchase.status === 'completed') {
+            const video = await VideoService.getVideo(purchase.videoId, true);
+            return {
+              ...purchase,
+              video: {
+                ...purchase.video,
+                fullVideoUrl: video?.fullVideoUrl || '',
+                streamingUrl: video?.fullVideoUrl || '',
+                previewUrl: video?.previewUrl || '',
+              }
+            };
+          }
+          return purchase;
+        })
+      );
+  
       return res.json({
         status: 'success',
-        data: purchases,
+        data: {
+          ...purchases,
+          purchases: purchasesWithUrls
+        }
       });
     } catch (error) {
       console.error('Failed to fetch user purchases:', error);

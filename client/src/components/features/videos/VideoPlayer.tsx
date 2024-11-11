@@ -17,7 +17,8 @@ export default function VideoPlayer({
   videoId, 
   initialUrls,
   previewMode = false, 
-  isPurchased = false, 
+  isPurchased = false,
+  url, 
   onPurchaseClick 
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -52,53 +53,62 @@ export default function VideoPlayer({
       try {
         setIsLoading(true);
         setError(null);
-
+    
         if (!videoRef.current) return;
-
+    
         if (!videoUrls) {
           const urls = await api.videos.getUrls(videoId);
           setVideoUrls(urls);
         }
-
+    
         const video = videoRef.current;
         
         video.volume = volume;
         video.muted = isMuted;
         video.playbackRate = playbackRate;
-
+    
+        // Determine which URL to use based on purchase status and mode
+        const videoUrl = (() => {
+          if (isPurchased || !previewMode) {
+            return url || videoUrls?.streamingUrl;
+          }
+          return videoUrls?.previewUrl;
+        })();
+    
+        // Only set src if we have a URL and it's different from current src
+        if (videoUrl && video.src !== videoUrl) {
+          video.src = videoUrl;
+        }
+    
         const handleLoaded = () => {
           setIsLoading(false);
           setDuration(video.duration);
         };
-
+    
         const handleError = (e: Event) => {
           console.error('Video error:', e);
           setError('Failed to load video');
           setIsLoading(false);
         };
-
+    
         const handleProgress = () => {
           setBuffered(video.buffered);
         };
-
+    
         const handleEnded = () => {
           setIsPlaying(false);
           setShowControls(true);
         };
-
+    
         video.addEventListener('loadedmetadata', handleLoaded);
         video.addEventListener('error', handleError);
         video.addEventListener('progress', handleProgress);
         video.addEventListener('ended', handleEnded);
-
-        if (isPurchased || !previewMode) {
-          video.src = videoUrls?.streamingUrl || '';
-        } else {
-          video.src = videoUrls?.previewUrl || '';
+    
+        if (videoUrl) {
+          await video.load();
         }
-
-        await video.load();
-
+    
         return () => {
           video.removeEventListener('loadedmetadata', handleLoaded);
           video.removeEventListener('error', handleError);
@@ -106,8 +116,8 @@ export default function VideoPlayer({
           video.removeEventListener('ended', handleEnded);
         };
       } catch (error) {
-        setError('Failed to load video');
-        console.error('Video loading error:', error);
+        console.error('Video initialization error:', error);
+        setError(error instanceof Error ? error.message : 'Failed to load video');
       } finally {
         setIsLoading(false);
       }

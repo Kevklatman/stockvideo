@@ -15,6 +15,29 @@ export interface Logger {
   info(message: string, metadata?: Record<string, any>): void;
   error(message: string, metadata?: Record<string, any>): void;
 }
+
+export interface PurchaseHistoryItem {
+  id: string;
+  videoId: string;
+  amount: number;
+  status: 'pending' | 'completed' | 'failed';
+  createdAt: string;
+  completedAt?: string;
+  video: {
+    title: string;
+    thumbnailUrl: string;
+    fullVideoUrl?: string;
+    streamingUrl?: string;
+    previewUrl?: string;
+  };
+}
+
+export interface PurchaseHistoryResponse {
+  purchases: PurchaseHistoryItem[];
+  total: number;
+  page: number;
+  pages: number;
+}
 export interface Video {
   id: string;
   title: string;
@@ -194,26 +217,6 @@ export interface PaginatedResponse<T> {
   pages: number;
   hasNext: boolean;
   hasPrevious: boolean;
-}
-
-export interface PurchaseHistoryResponse {
-  purchases: PurchaseHistoryItem[];
-  total: number;
-  page: number;
-  pages: number;
-}
-
-export interface PurchaseHistoryItem {
-  id: string;
-  videoId: string;
-  amount: number;         // in dollars
-  status: PurchaseStatus['status'];
-  createdAt: string;
-  completedAt?: string;
-  video: {
-    title: string;
-    thumbnailUrl: string;
-  };
 }
 
 // Configuration Types
