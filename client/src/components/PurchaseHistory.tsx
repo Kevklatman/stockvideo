@@ -102,18 +102,18 @@ export default function PurchaseHistoryPage() {
                 className="bg-white rounded-lg shadow overflow-hidden"
               >
                 <div className="relative">
-                  <VideoPlayer
-                    videoId={purchase.videoId}
-                    thumbnailUrl={purchase.video.thumbnailUrl}
-                    initialUrls={{
-                      streamingUrl: '',
-                      previewUrl: '',
-                      thumbnailUrl: purchase.video.thumbnailUrl
-                    }}
-                    isPurchased={purchase.status === 'completed'}
-                    previewMode={purchase.status !== 'completed'}
-                    onPurchaseClick={() => handlePurchaseClick(purchase.videoId)}
-                  />
+                <VideoPlayer
+  videoId={purchase.videoId}
+  thumbnailUrl={purchase.video.thumbnailUrl}
+  initialUrls={{
+    streamingUrl: purchase.video.streamingUrl || purchase.video.fullVideoUrl || '',
+    previewUrl: purchase.video.previewUrl || '',
+    thumbnailUrl: purchase.video.thumbnailUrl || '',
+  }}
+  isPurchased={purchase.status === 'completed'}
+  previewMode={false}  // Changed because these are purchased videos
+  onPurchaseClick={() => handlePurchaseClick(purchase.videoId)}
+/>
                 </div>
 
                 <div className="p-4 space-y-2">

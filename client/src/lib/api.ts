@@ -80,9 +80,11 @@ export interface PurchaseHistoryItem {
   video: {
     title: string;
     thumbnailUrl: string;
+    fullVideoUrl?: string;
+    streamingUrl?: string;
+    previewUrl?: string;
   };
 }
-
 export interface PurchaseHistoryResponse {
   purchases: PurchaseHistoryItem[];
   total: number;
