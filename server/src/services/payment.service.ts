@@ -51,6 +51,12 @@ static async createPaymentIntent(
   });
   
   try {
+    // Check if the video has already been purchased by the user
+    const alreadyPurchased = await this.hasUserPurchasedVideo(userId, videoId);
+    if (alreadyPurchased) {
+      throw new PaymentError('Video already purchased');
+    }
+
     // Initialize Stripe
     const stripe = this.initStripe();
 
@@ -810,4 +816,10 @@ static async verifyWebhookConfiguration(): Promise<void> {
   }
 }
 
+  // Implement the logic to check if the user has already purchased the video
+  // This could involve querying your database to see if a purchase record exists
+  static async hasUserPurchasedVideo(userId: string, videoId: string): Promise<boolean> {
+    const purchase = await this.purchaseRepository.findOne({ where: { userId, videoId, status: 'completed' } });
+    return !!purchase;
+  }
 }

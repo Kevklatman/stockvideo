@@ -1,5 +1,8 @@
 // src/controllers/video.controller.ts
 import { Request, Response, NextFunction } from "express";
+import { AppDataSource } from "../config/database";
+import { Video } from "../models/video.model";
+import { Purchase } from "../models/purchase.model";
 import { VideoService } from "../services/video.service";
 import { VideoAccessService } from "../services/video-access.service";
 import { AuthRequest } from "../middleware/auth.middleware";
@@ -17,6 +20,8 @@ import { PaymentService } from "../services/payment.service";
 import { AuthenticatedRequest, PaymentError, VideoAccessError } from "../types";
 
 export class VideoController {
+  private static videoRepository = AppDataSource.getRepository(Video);
+  private static purchaseRepository = AppDataSource.getRepository(Purchase);
   private static s3Client = new S3Client({
     region: process.env.AWS_REGION,
     credentials: {
@@ -474,13 +479,14 @@ static async getVideoUrls(req: Request, res: Response) {
   }
 
   static async getVideo(
-    req: Request, 
+    req: AuthRequest, 
     res: Response, 
     next: NextFunction
   ): Promise<void> {
     try {
       const videoId = req.params.id;
-      const includePrivate = !!(req as AuthRequest).user?.id;
+      const userId = req.user?.id;
+      const includePrivate = !!userId;
 
       const video = await VideoService.getVideo(videoId, includePrivate);
 
@@ -493,9 +499,14 @@ static async getVideoUrls(req: Request, res: Response) {
         return;
       }
 
+      const hasPurchased = userId ? await PaymentService.hasUserPurchasedVideo(userId, videoId) : false;
+
       res.json({
         status: 'success',
-        data: video
+        data: {
+          video,
+          hasPurchased
+        }
       });
     } catch (error) {
       next(error);
@@ -659,10 +670,7 @@ static async getVideoUrls(req: Request, res: Response) {
 // Add this method to your existing VideoController class
 static async verifyPurchase(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const userId = req.user?.id;
-    const { videoId } = req.params;
-
-    if (!userId) {
+    if (!req.user?.id) {
       res.status(401).json({
         status: 'error',
         code: 'UNAUTHORIZED',
@@ -670,6 +678,9 @@ static async verifyPurchase(req: AuthRequest, res: Response, next: NextFunction)
       });
       return;
     }
+
+    const userId = req.user.id;
+    const { videoId } = req.params;
 
     if (!videoId) {
       res.status(400).json({
@@ -700,9 +711,35 @@ static async verifyPurchase(req: AuthRequest, res: Response, next: NextFunction)
     res.json({
       status: 'success',
       data: {
-        verified: isPurchased,
+        verified: isPurchased.verified,
         isOwner: false
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+static async getVideosForUser(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    if (!req.user?.id) {
+      res.status(401).json({
+        status: 'error',
+        code: 'UNAUTHORIZED',
+        message: 'Authentication required'
+      });
+      return;
+    }
+
+    const userId = req.user.id;
+    const allVideos = await this.videoRepository.find();
+    const purchasedVideos = await this.purchaseRepository.find({ where: { userId, status: 'completed' } });
+    const purchasedVideoIds = purchasedVideos.map(purchase => purchase.videoId);
+
+    const availableVideos = allVideos.filter(video => !purchasedVideoIds.includes(video.id));
+    res.json({
+      status: 'success',
+      data: availableVideos
     });
   } catch (error) {
     next(error);
