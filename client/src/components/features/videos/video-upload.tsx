@@ -1,14 +1,15 @@
-import { useState, useRef, useCallback } from 'react';
+// src/components/features/videos/video-upload.tsx
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useAuth } from '@/providers/auth-provider';
 import { api } from '@/lib/api';
+import Link from 'next/link';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 
 interface UploadUrlResponse {
   url: string;
   videoId: string;
   key: string;
 }
-
-
 
 export default function VideoUpload() {
   const { user } = useAuth();
@@ -19,6 +20,8 @@ export default function VideoUpload() {
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [isUploading, setIsUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [sellerStatus, setSellerStatus] = useState<'none' | 'pending' | 'active' | 'rejected'>('none');
+  const [isCheckingStatus, setIsCheckingStatus] = useState(true);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -32,6 +35,26 @@ export default function VideoUpload() {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [videoKey, setVideoKey] = useState<string>('');
+
+  // Add seller status check
+  useEffect(() => {
+    const checkSellerStatus = async () => {
+      try {
+        const response = await api.get('/api/seller/account-status');
+        const data = response as { stripeConnectStatus: 'none' | 'pending' | 'active' | 'rejected' };
+        setSellerStatus(data.stripeConnectStatus);
+      } catch (error) {
+        console.error('Error checking seller status:', error);
+        setError('Failed to verify seller status');
+      } finally {
+        setIsCheckingStatus(false);
+      }
+    };
+
+    if (user) {
+      checkSellerStatus();
+    }
+  }, [user]);
 
   const handleFormChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -66,7 +89,6 @@ export default function VideoUpload() {
       return;
     }
 
-    // Generate a unique key for the video
     const uniquePrefix = Date.now().toString();
     const sanitizedFileName = selectedFile.name.replace(/[^a-zA-Z0-9.]/g, '_');
     const newVideoKey = `videos/${uniquePrefix}-${sanitizedFileName}`;
@@ -132,21 +154,19 @@ export default function VideoUpload() {
     setError(null);
   
     try {
-      console.log('Requesting upload URL with:', {
-        contentType: file.type,
-        fileSize: file.size,
-        videoKey
-      });
-  
+      // Verify seller status before proceeding
+      const sellerResponse = await api.get('/api/seller/account-status');
+      const sellerData = sellerResponse as { stripeConnectStatus: 'none' | 'pending' | 'active' | 'rejected' };
+      if (sellerData.stripeConnectStatus !== 'active') {
+        throw new Error('Your seller account must be active to upload videos');
+      }
+
       const response = await api.post<UploadUrlResponse>('/api/videos/upload-url', {
         contentType: file.type,
         fileSize: file.size,
         videoKey
       });
   
-      console.log('Upload URL response:', response);
-  
-      // The response is already the data we need, no need to access .data
       if (!response.url) {
         throw new Error('Invalid response format: missing URL');
       }
@@ -161,6 +181,7 @@ export default function VideoUpload() {
       setIsLoading(false);
     }
   }, [user, file, videoKey, validateForm]);
+
   const uploadFile = useCallback(async () => {
     if (!file || !uploadUrl || !videoKey) {
       console.error('Missing required upload data:', { file: !!file, uploadUrl: !!uploadUrl, videoKey: !!videoKey });
@@ -172,6 +193,13 @@ export default function VideoUpload() {
     setIsSubmitting(true);
     
     try {
+      // Verify seller status before proceeding
+      const sellerResponse = await api.get('/api/seller/account-status');
+      const sellerData = sellerResponse as { stripeConnectStatus: 'none' | 'pending' | 'active' | 'rejected' };
+      if (sellerData.stripeConnectStatus !== 'active') {
+        throw new Error('Your seller account must be active to upload videos');
+      }
+
       const xhr = new XMLHttpRequest();
       
       xhr.upload.onprogress = (event) => {
@@ -227,11 +255,6 @@ export default function VideoUpload() {
         };
         xhr.onabort = () => reject(new Error('Upload aborted'));
         
-        console.log('Sending file:', { 
-          size: file.size, 
-          type: file.type, 
-          url: uploadUrl 
-        });
         xhr.send(file);
       });
   
@@ -247,7 +270,68 @@ export default function VideoUpload() {
       setIsSubmitting(false);
     }
   }, [file, uploadUrl, videoKey, formData, thumbnail, resetForm]);
-  
+
+  if (isCheckingStatus) {
+    return (
+      <div className="flex justify-center items-center min-h-[400px]">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (sellerStatus !== 'active') {
+    return (
+      <div className="max-w-3xl mx-auto p-4">
+        <div className="text-center py-12 bg-white rounded-lg shadow-sm">
+          <h2 className="text-2xl font-bold mb-4">Seller Account Required</h2>
+          
+          {sellerStatus === 'none' && (
+            <>
+              <p className="text-gray-600 mb-6">
+                You need to set up a seller account before you can upload videos for sale.
+              </p>
+              <Link
+                href="/seller"
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Set Up Seller Account
+              </Link>
+            </>
+          )}
+
+          {sellerStatus === 'pending' && (
+            <>
+              <p className="text-gray-600 mb-6">
+                Your seller account is pending verification. Please complete the Stripe onboarding process.
+              </p>
+              <Link
+                href="/seller"
+                className="px-6 py-3 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
+              >
+                Complete Seller Setup
+              </Link>
+            </>
+          )}
+
+          {sellerStatus === 'rejected' && (
+            <>
+              <p className="text-gray-600 mb-6">
+                Your seller account verification was rejected. Please contact support or try again.
+              </p>
+              <Link
+                href="/seller"
+                className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                Review Status
+              </Link>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Rest of your existing return statement with the form...
   return (
     <div className="max-w-3xl mx-auto p-4">
       <form className="space-y-6" onSubmit={(e) => e.preventDefault()}>
@@ -298,8 +382,6 @@ export default function VideoUpload() {
             />
           </div>
   
-
-  
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Select Video File *
@@ -335,8 +417,8 @@ export default function VideoUpload() {
               <div className="flex flex-wrap items-center gap-4">
                 <button
                   onClick={captureThumbnail}
-                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white rounded transition-colors"
                   type="button"
+                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white rounded transition-colors"
                   disabled={isSubmitting}
                 >
                   Capture Thumbnail
@@ -350,7 +432,9 @@ export default function VideoUpload() {
   
               {thumbnail && (
                 <div className="mt-4">
-                  <h3 className="text-sm font-medium text-gray-700 mb-2">Thumbnail Preview</h3>
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">
+                    Thumbnail Preview
+                  </h3>
                   <div className="relative aspect-video w-64 bg-gray-100 rounded-lg overflow-hidden">
                     <img
                       src={thumbnail}
@@ -369,10 +453,10 @@ export default function VideoUpload() {
             <button
               onClick={getUploadUrl}
               disabled={isLoading || isSubmitting || !formData.title || !formData.price || !thumbnail}
+              type="button"
               className="px-4 py-2 rounded text-white transition-colors
                 disabled:bg-blue-300 disabled:cursor-not-allowed
                 enabled:bg-blue-500 enabled:hover:bg-blue-600"
-              type="button"
             >
               {isLoading ? 'Getting URL...' : 'Get Upload URL'}
             </button>
@@ -382,8 +466,8 @@ export default function VideoUpload() {
             <button
               onClick={uploadFile}
               disabled={isSubmitting}
-              className="px-4 py-2 bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white rounded transition-colors"
               type="button"
+              className="px-4 py-2 bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white rounded transition-colors"
             >
               Upload File
             </button>

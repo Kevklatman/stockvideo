@@ -17,6 +17,7 @@ const authNavigationItems = [
   { label: 'Profile', href: '/profile' },
   { label: 'My Videos', href: '/videos/my-videos' },
   { label: 'Purchases', href: '/purchases' },
+  { label: 'Seller Dashboard', href: '/seller' }, // Added Seller Dashboard
 ];
 
 export default function RootLayout({
@@ -29,7 +30,6 @@ export default function RootLayout({
   const router = useRouter();
   const { user, isLoading, isInitialized, logout } = useAuth();
 
-  // Debug auth state changes
   useEffect(() => {
     console.log('RootLayout auth state:', {
       isAuthenticated: !!user,
@@ -39,7 +39,6 @@ export default function RootLayout({
     });
   }, [user, isLoading, isInitialized]);
 
-  // Close mobile menu when auth state changes
   useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [user]);
@@ -55,11 +54,9 @@ export default function RootLayout({
       setShowLogoutSuccess(false);
     } catch (error) {
       console.error('Logout error:', error);
-      // Handle any logout errors here
     }
   };
 
-  // Wait for auth to initialize
   if (!isInitialized || isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
@@ -203,9 +200,7 @@ export default function RootLayout({
                 >
                   {item.label}
                 </Link>
-              ))
-              
-              }
+              ))}
 
               {user && (
                 <Link
