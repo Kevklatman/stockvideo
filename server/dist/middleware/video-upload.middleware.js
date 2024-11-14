@@ -42,7 +42,7 @@ const storage = multer_1.default.diskStorage({
     }
 });
 // Configure multer upload settings
-const upload = (0, multer_1.default)({
+exports.videoUpload = (0, multer_1.default)({
     storage: storage,
     limits: {
         fileSize: 100 * 1024 * 1024, // 100MB limit
@@ -57,10 +57,8 @@ const upload = (0, multer_1.default)({
         }
     }
 });
-// Export configured upload middleware
-exports.videoUpload = upload;
-// Error handler middleware
-const handleUploadError = (err, req, res, next) => {
+// Error handler middleware with proper typing
+const handleUploadError = (err, _req, res, _next) => {
     if (err instanceof multer_1.MulterError) {
         if (err.code === 'LIMIT_FILE_SIZE') {
             res.status(400).json({
@@ -77,15 +75,11 @@ const handleUploadError = (err, req, res, next) => {
         });
         return;
     }
-    if (err instanceof Error) {
-        res.status(400).json({
-            status: 'error',
-            code: 'INVALID_FILE',
-            message: err.message
-        });
-        return;
-    }
-    next(err);
+    res.status(400).json({
+        status: 'error',
+        code: 'INVALID_FILE',
+        message: err.message
+    });
 };
 exports.handleUploadError = handleUploadError;
 // Type guard for multer file
@@ -96,7 +90,7 @@ function isMulterFile(file) {
         'originalname' in file &&
         'mimetype' in file);
 }
-// Validate uploaded file middleware
+// Validate uploaded file middleware with proper typing
 const validateUploadedFile = (req, res, next) => {
     if (!req.file) {
         res.status(400).json({

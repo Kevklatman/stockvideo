@@ -140,14 +140,21 @@ class AuthService {
             if (!secret) {
                 throw new AuthError("JWT secret not configured", "CONFIG_ERROR");
             }
+            // Verify the token
             const decoded = jsonwebtoken_1.default.verify(token, secret);
-            // Optionally verify user still exists and is active
+            // Verify user still exists in database
             const user = await this.userRepository.findOne({
                 where: { id: decoded.id }
             });
             if (!user) {
                 throw new AuthError("User not found", "USER_NOT_FOUND");
             }
+            // Log successful validation
+            console.log('Token validated for user:', {
+                id: decoded.id,
+                email: decoded.email,
+                role: decoded.role
+            });
             return {
                 id: decoded.id,
                 email: decoded.email,
@@ -155,11 +162,16 @@ class AuthService {
             };
         }
         catch (error) {
+            // Enhanced error handling
+            console.error('Token validation error:', error);
             if (error instanceof jsonwebtoken_1.default.JsonWebTokenError) {
                 throw new AuthError("Invalid token", "INVALID_TOKEN");
             }
             if (error instanceof jsonwebtoken_1.default.TokenExpiredError) {
                 throw new AuthError("Token expired", "TOKEN_EXPIRED");
+            }
+            if (error instanceof AuthError) {
+                throw error;
             }
             throw new AuthError("Token validation failed", "TOKEN_VALIDATION_FAILED");
         }

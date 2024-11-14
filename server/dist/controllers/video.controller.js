@@ -1,13 +1,67 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.VideoController = void 0;
+const database_1 = require("../config/database");
+const video_model_1 = require("../models/video.model");
+const purchase_model_1 = require("../models/purchase.model");
 const video_service_1 = require("../services/video.service");
 const video_access_service_1 = require("../services/video-access.service");
 const class_transformer_1 = require("class-transformer");
 const class_validator_1 = require("class-validator");
 const video_dto_1 = require("../dtos/video.dto");
 const errors_1 = require("../types/errors");
+const client_s3_1 = require("@aws-sdk/client-s3");
+const s3_request_presigner_1 = require("@aws-sdk/s3-request-presigner");
+const crypto_1 = __importDefault(require("crypto"));
+const payment_service_1 = require("../services/payment.service");
+const types_1 = require("../types");
 class VideoController {
+    // src/controllers/upload.controller.ts
+    // src/controllers/upload.controller.ts
+    static async getUploadUrl(req, res) {
+        try {
+            const { contentType } = req.body;
+            if (!contentType) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Content type is required'
+                });
+            }
+            const videoId = crypto_1.default.randomUUID();
+            const key = `videos/${videoId}`;
+            // Generate the signed URL
+            const command = new client_s3_1.PutObjectCommand({
+                Bucket: process.env.AWS_BUCKET_NAME,
+                Key: key,
+                ContentType: contentType,
+                Metadata: {
+                    uploadedAt: new Date().toISOString()
+                }
+            });
+            const url = await (0, s3_request_presigner_1.getSignedUrl)(VideoController.s3Client, command, {
+                expiresIn: 3600
+            });
+            // Return response wrapped in data property
+            res.json({
+                status: 'success',
+                data: {
+                    url,
+                    videoId,
+                    key
+                }
+            });
+        }
+        catch (error) {
+            console.error('Upload URL generation error:', error);
+            res.status(500).json({
+                status: 'error',
+                message: 'Failed to generate upload URL'
+            });
+        }
+    }
     /**
      * Stream video preview
      */
@@ -23,6 +77,20 @@ class VideoController {
                 return;
             }
             res.redirect(previewUrl);
+        }
+        catch (error) {
+            next(error);
+        }
+    }
+    // In VideoController class in video.controller.ts
+    static async getAllVideos(req, res, next) {
+        try {
+            // Get all videos from service
+            const videos = await video_service_1.VideoService.findAll();
+            res.json({
+                status: 'success',
+                data: videos
+            });
         }
         catch (error) {
             next(error);
@@ -49,7 +117,7 @@ class VideoController {
                     stream.pipe(res);
                 }
                 catch (error) {
-                    if (error instanceof errors_1.VideoAccessError) {
+                    if (error instanceof types_1.VideoAccessError) {
                         res.status(416).json({
                             status: 'error',
                             code: 'INVALID_RANGE',
@@ -66,6 +134,116 @@ class VideoController {
         }
         catch (error) {
             next(error);
+        }
+    }
+    // In VideoController
+    // src/controllers/video.controller.ts
+    // Update VideoController.ts to add checkAccess method
+    static async checkAccess(req, res, next) {
+        try {
+            const { videoId } = req.params;
+            const userId = req.user?.id;
+            if (!userId) {
+                res.status(401).json({
+                    status: 'error',
+                    code: 'UNAUTHORIZED',
+                    message: 'Authentication required'
+                });
+                return;
+            }
+            // Check if user is owner
+            const isOwner = await video_service_1.VideoService.isVideoOwner(videoId, userId);
+            if (isOwner) {
+                res.json({
+                    status: 'success',
+                    data: {
+                        hasAccess: true,
+                        isOwner: true
+                    }
+                });
+                return;
+            }
+            // Check if user has purchased the video
+            const paymentIntentId = req.body.paymentIntentId;
+            const hasPurchased = await payment_service_1.PaymentService.verifyPurchase(userId, videoId, paymentIntentId);
+            res.json({
+                status: 'success',
+                data: {
+                    hasAccess: hasPurchased.verified,
+                    isOwner: false
+                }
+            });
+        }
+        catch (error) {
+            next(error);
+        }
+    }
+    // Update PaymentController.ts createPaymentIntent
+    static async createPaymentIntent(req, res, next) {
+        try {
+            const { videoId } = req.body;
+            const userId = req.user?.id;
+            if (!userId) {
+                res.status(401).json({
+                    status: 'error',
+                    code: 'UNAUTHORIZED',
+                    message: 'Authentication required'
+                });
+                return;
+            }
+            const paymentIntent = await payment_service_1.PaymentService.createPaymentIntent(userId, videoId);
+            res.json({
+                status: 'success',
+                data: paymentIntent
+            });
+        }
+        catch (error) {
+            if (error instanceof types_1.PaymentError) {
+                res.status(400).json({
+                    status: 'error',
+                    code: error.code,
+                    message: error.message
+                });
+                return;
+            }
+            next(error);
+        }
+    }
+    static async getVideoUrls(req, res) {
+        try {
+            const { videoId } = req.params;
+            // Add logging to debug
+            console.log('Getting URLs for video:', videoId);
+            const video = await video_service_1.VideoService.getVideo(videoId);
+            if (!video) {
+                console.log('Video not found:', videoId);
+                return res.status(404).json({
+                    status: 'error',
+                    code: 'VIDEO_NOT_FOUND',
+                    message: 'Video not found'
+                });
+            }
+            // Add more logging
+            console.log('Found video:', {
+                id: video.id,
+                hasFullUrl: !!video.fullVideoUrl,
+                hasPreviewUrl: !!video.previewUrl
+            });
+            return res.json({
+                status: 'success',
+                data: {
+                    streamingUrl: video.fullVideoUrl,
+                    previewUrl: video.previewUrl,
+                    thumbnailUrl: video.previewUrl // or a separate thumbnail if you have one
+                }
+            });
+        }
+        catch (error) {
+            console.error('Error getting video URLs:', error);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Failed to fetch video URLs'
+            });
         }
     }
     /**
@@ -184,7 +362,7 @@ class VideoController {
      * Error handler
      */
     static handleError(error, res) {
-        if (error instanceof errors_1.VideoAccessError) {
+        if (error instanceof types_1.VideoAccessError) {
             res.status(403).json({
                 status: 'error',
                 code: 'ACCESS_DENIED',
@@ -217,7 +395,8 @@ class VideoController {
     static async getVideo(req, res, next) {
         try {
             const videoId = req.params.id;
-            const includePrivate = !!req.user?.id;
+            const userId = req.user?.id;
+            const includePrivate = !!userId;
             const video = await video_service_1.VideoService.getVideo(videoId, includePrivate);
             if (!video) {
                 res.status(404).json({
@@ -227,9 +406,13 @@ class VideoController {
                 });
                 return;
             }
+            const hasPurchased = userId ? await payment_service_1.PaymentService.hasUserPurchasedVideo(userId, videoId) : false;
             res.json({
                 status: 'success',
-                data: video
+                data: {
+                    video,
+                    hasPurchased
+                }
             });
         }
         catch (error) {
@@ -355,5 +538,87 @@ class VideoController {
             next(error);
         }
     }
+    // src/controllers/video.controller.ts
+    // Add this method to your existing VideoController class
+    static async verifyPurchase(req, res, next) {
+        try {
+            if (!req.user?.id) {
+                res.status(401).json({
+                    status: 'error',
+                    code: 'UNAUTHORIZED',
+                    message: 'Authentication required'
+                });
+                return;
+            }
+            const userId = req.user.id;
+            const { videoId } = req.params;
+            if (!videoId) {
+                res.status(400).json({
+                    status: 'error',
+                    code: 'BAD_REQUEST',
+                    message: 'Video ID is required'
+                });
+                return;
+            }
+            // Check video ownership first
+            const isOwner = await video_service_1.VideoService.isVideoOwner(videoId, userId);
+            if (isOwner) {
+                res.json({
+                    status: 'success',
+                    data: {
+                        verified: true,
+                        isOwner: true
+                    }
+                });
+                return;
+            }
+            // Check if video is purchased
+            const paymentIntentId = req.body.paymentIntentId;
+            const isPurchased = await payment_service_1.PaymentService.verifyPurchase(userId, videoId, paymentIntentId);
+            res.json({
+                status: 'success',
+                data: {
+                    verified: isPurchased.verified,
+                    isOwner: false
+                }
+            });
+        }
+        catch (error) {
+            next(error);
+        }
+    }
+    static async getVideosForUser(req, res, next) {
+        try {
+            if (!req.user?.id) {
+                res.status(401).json({
+                    status: 'error',
+                    code: 'UNAUTHORIZED',
+                    message: 'Authentication required'
+                });
+                return;
+            }
+            const userId = req.user.id;
+            const allVideos = await this.videoRepository.find();
+            const purchasedVideos = await this.purchaseRepository.find({ where: { userId, status: 'completed' } });
+            const purchasedVideoIds = purchasedVideos.map(purchase => purchase.videoId);
+            const availableVideos = allVideos.filter(video => !purchasedVideoIds.includes(video.id));
+            res.json({
+                status: 'success',
+                data: availableVideos
+            });
+        }
+        catch (error) {
+            next(error);
+        }
+    }
 }
 exports.VideoController = VideoController;
+VideoController.videoRepository = database_1.AppDataSource.getRepository(video_model_1.Video);
+VideoController.purchaseRepository = database_1.AppDataSource.getRepository(purchase_model_1.Purchase);
+VideoController.s3Client = new client_s3_1.S3Client({
+    region: process.env.AWS_REGION,
+    credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    },
+});

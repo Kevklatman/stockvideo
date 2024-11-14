@@ -105,6 +105,16 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", Array)
 ], VideoResponseDto.prototype, "tags", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], VideoResponseDto.prototype, "stripeProductId", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], VideoResponseDto.prototype, "stripePriceId", void 0);
 class VideoSearchDto {
 }
 exports.VideoSearchDto = VideoSearchDto;

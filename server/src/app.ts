@@ -12,6 +12,7 @@ import { Container } from "typedi";
 import { paymentRouter } from "./routes/payment.routes";
 import { webhookRouter } from "./routes/webhook.routes";
 import { PaymentService } from './services/payment.service';
+import { sellerRouter } from './routes/seller.routes';
 
 // Load environment variables early
 dotenv.config({ path: path.join(__dirname, '../.env') });
@@ -104,6 +105,7 @@ app.use((req, res, next) => {
     })(req, res, next);
   }
 });
+app.use('/api/seller', sellerRouter);
 
 // Request sanitization
 app.use(security.sanitizeRequest);

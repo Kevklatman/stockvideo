@@ -203,7 +203,9 @@ export default function RootLayout({
                 >
                   {item.label}
                 </Link>
-              ))}
+              ))
+              
+              }
 
               {user && (
                 <Link

@@ -4,6 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.VideoAccessMiddleware = void 0;
 const video_access_service_1 = require("../services/video-access.service");
 const types_1 = require("../types");
+const video_service_1 = require("../services/video.service");
 class VideoAccessMiddleware {
 }
 exports.VideoAccessMiddleware = VideoAccessMiddleware;
@@ -56,6 +57,23 @@ VideoAccessMiddleware.fullVideoAccess = async (req, res, next) => {
             });
             return;
         }
+        // Check if user is the owner
+        const isOwner = await video_access_service_1.VideoAccessService.isVideoOwner(videoId, userId);
+        if (isOwner) {
+            // If owner, bypass purchase check
+            const streamingToken = await video_access_service_1.VideoAccessService.getStreamingToken(videoId, userId);
+            if (streamingToken) {
+                res.locals.streamingToken = streamingToken;
+                next();
+            }
+            else {
+                res.status(403).json({
+                    message: "Video not purchased or access denied"
+                });
+            }
+            return;
+        }
+        // If not owner, check for purchase
         const streamingToken = await video_access_service_1.VideoAccessService.getStreamingToken(videoId, userId);
         if (!streamingToken) {
             res.status(403).json({
@@ -110,6 +128,38 @@ VideoAccessMiddleware.download = async (req, res, next) => {
     catch (error) {
         res.status(500).json({
             message: "Error generating download token"
+        });
+    }
+};
+VideoAccessMiddleware.hasOwnerAccess = async (req, res, next) => {
+    try {
+        const { videoId } = req.params;
+        const userId = req.user?.id;
+        if (!videoId) {
+            res.status(400).json({
+                message: "Video ID is required"
+            });
+            return;
+        }
+        if (!userId) {
+            res.status(401).json({
+                message: "Authentication required"
+            });
+            return;
+        }
+        const isOwner = await video_service_1.VideoService.isVideoOwner(videoId, userId);
+        if (isOwner) {
+            res.locals.hasFullAccess = true;
+            res.locals.isOwner = true;
+            next();
+            return;
+        }
+        // If not owner, continue to regular access check
+        next();
+    }
+    catch (error) {
+        res.status(500).json({
+            message: "Error checking video ownership"
         });
     }
 };
@@ -205,6 +255,7 @@ VideoAccessMiddleware.middlewareChain = {
         _a.checkProcessingStatus,
         _a.handleFormatCompatibility,
         _a.handlePartialContent,
+        _a.hasOwnerAccess,
         _a.fullVideoAccess
     ],
     preview: [
@@ -215,6 +266,7 @@ VideoAccessMiddleware.middlewareChain = {
     download: [
         _a.cors,
         _a.checkProcessingStatus,
+        _a.hasOwnerAccess,
         _a.download
     ],
     validateStream: [

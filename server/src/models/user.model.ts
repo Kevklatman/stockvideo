@@ -25,6 +25,17 @@ export class User {
   @Column({ default: "user" })
   role!: string;
 
+  // Add these new columns
+  @Column({ nullable: true })
+  stripeConnectAccountId?: string;
+
+  @Column({ 
+    type: 'enum', 
+    enum: ['none', 'pending', 'active', 'rejected'],
+    default: 'none'
+  })
+  stripeConnectAccountStatus!: string;
+
   @CreateDateColumn()
   createdAt!: Date;
 

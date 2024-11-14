@@ -15,7 +15,9 @@ export interface Logger {
   info(message: string, metadata?: Record<string, any>): void;
   error(message: string, metadata?: Record<string, any>): void;
 }
-
+export interface AuthenticatedRequest<P = any, ResBody = any, ReqBody = any, ReqQuery = any> extends Request<P, ResBody, ReqBody, ReqQuery> {
+  user?: User;
+}
 export interface PurchaseHistoryItem {
   id: string;
   videoId: string;
@@ -110,7 +112,15 @@ export interface PaymentIntent {
   purchaseId: string;
   paymentIntentId: string;
 }
-
+export interface TransactionHistory {
+  id: string;
+  amount: number;
+  currency: string;
+  created: string;
+  status: string;
+  type: string;
+  description: string | null;
+}
 export interface PaymentIntentResponse {
   clientSecret: string;
   amount: number;         // in dollars

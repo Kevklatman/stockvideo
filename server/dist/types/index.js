@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.StorageError = exports.ValidationError = exports.VideoAccessError = exports.PaymentError = exports.VideoProcessingError = exports.BaseError = void 0;
-// Error classes
+// Error Classes
 class BaseError extends Error {
     constructor(message, code) {
         super(message);

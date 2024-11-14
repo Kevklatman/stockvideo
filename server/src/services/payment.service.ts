@@ -62,62 +62,44 @@ static async createPaymentIntent(
 
     // Verify video exists and get price
     const video = await this.videoRepository.findOne({
-      where: { id: videoId }
+      where: { id: videoId },
+      relations: ['user']
     });
-
+  
     if (!video) {
       throw new PaymentError('Video not found');
     }
-
-    // Check for existing pending purchase
-    const existingPurchase = await this.purchaseRepository.findOne({
-      where: {
-        userId,
-        videoId,
-        status: 'pending'
-      }
+  
+    const seller = await this.userRepository.findOne({
+      where: { id: video.userId }
     });
-
-    if (existingPurchase) {
-      logger.info('Found existing pending purchase', { purchaseId: existingPurchase.id });
-      // If there's an existing payment intent, retrieve it
-      if (existingPurchase.stripePaymentId) {
-        try {
-          const existingIntent = await stripe.paymentIntents.retrieve(existingPurchase.stripePaymentId);
-          if (existingIntent.status !== 'canceled' && existingIntent.status !== 'succeeded') {
-            return {
-              clientSecret: existingIntent.client_secret!,
-              paymentIntentId: existingIntent.id,
-              amount: video.price,
-              currency: 'usd',
-              purchaseId: existingPurchase.id
-            };
-          }
-        } catch (error) {
-          logger.warn('Error retrieving existing payment intent', { error });
-        }
-      }
+  
+    if (!seller?.stripeConnectAccountId) {
+      throw new PaymentError('Seller not configured for payments');
     }
-
-    // Create or update purchase record
-    const purchase = existingPurchase || this.purchaseRepository.create({
-      userId,
-      videoId,
-      amount: video.price,
-      status: 'pending'
-    });
-
-    const savedPurchase = await this.purchaseRepository.save(purchase);
-    logger.info('Created/Updated purchase record:', { purchaseId: savedPurchase.id });
-
-    // Create Stripe PaymentIntent
+  
     const amountInCents = Math.round(video.price * 100);
-    const paymentIntent = await stripe.paymentIntents.create({
+    const platformFee = Math.round(amountInCents * 0.10); // 10% platform fee
+  
+    const purchase = new Purchase();
+    purchase.userId = userId;
+    purchase.videoId = videoId;
+    purchase.status = 'pending';
+    purchase.amount = video.price;
+    const savedPurchase = await this.purchaseRepository.save(purchase);
+
+    const paymentIntent = await this.stripe.paymentIntents.create({
       amount: amountInCents,
       currency: 'usd',
+      payment_method_types: ['card'],
+      application_fee_amount: platformFee,
+      transfer_data: {
+        destination: seller.stripeConnectAccountId,
+      },
       metadata: {
         videoId,
         userId,
+        sellerId: seller.id,
         purchaseId: savedPurchase.id
       }
     });

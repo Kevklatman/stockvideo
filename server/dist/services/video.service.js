@@ -136,15 +136,16 @@ class VideoService {
     /**
      * Get a single video by ID
      */
+    // In VideoService
     static async getVideo(videoId, includePrivate = false) {
         try {
             // Check cache first
             const cachedVideo = await this.getCachedVideo(videoId);
             if (cachedVideo) {
-                if (includePrivate) {
-                    return cachedVideo;
-                }
+                return cachedVideo;
             }
+            // Log the search attempt
+            console.log('Searching for video:', videoId);
             const video = await this.videoRepository.findOne({
                 where: { id: videoId },
                 relations: ['user'],
@@ -163,15 +164,34 @@ class VideoService {
                 }
             });
             if (video) {
+                // Cache the video data
                 await this.cacheVideoData(video);
+                console.log('Found video:', video.id);
+            }
+            else {
+                console.log('No video found with ID:', videoId);
             }
             return video;
         }
         catch (error) {
-            if (error instanceof Error) {
-                throw new Error(`Failed to fetch video: ${error.message}`);
-            }
-            throw new Error('Failed to fetch video');
+            console.error('Error fetching video:', error);
+            throw error;
+        }
+    }
+    // In VideoService
+    static async isVideoOwner(videoId, userId) {
+        try {
+            const video = await this.videoRepository.findOne({
+                where: {
+                    id: videoId,
+                    userId: userId
+                }
+            });
+            return !!video;
+        }
+        catch (error) {
+            console.error('Error checking video ownership:', error);
+            return false;
         }
     }
     // Removed duplicate getUserVideos method
@@ -365,6 +385,29 @@ class VideoService {
                 throw new Error(`Failed to fetch user videos: ${error.message}`);
             }
             throw new Error('Failed to fetch user videos');
+        }
+    }
+    // In VideoService class in video.service.ts
+    static async findAll() {
+        try {
+            // Create query builder
+            const queryBuilder = this.videoRepository
+                .createQueryBuilder('video')
+                .leftJoinAndSelect('video.user', 'user')
+                .select([
+                'video',
+                'video.fullVideoUrl',
+                'user.id',
+                'user.email',
+                'user.role'
+            ]);
+            // Execute query
+            const videos = await queryBuilder.getMany();
+            return videos;
+        }
+        catch (error) {
+            console.error('Error finding videos:', error);
+            throw new Error('Failed to fetch videos');
         }
     }
 }
