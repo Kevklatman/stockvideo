@@ -1,5 +1,6 @@
 // src/components/features/videos/video-upload.tsx
 import { useState, useRef, useCallback, useEffect } from 'react';
+import Image from 'next/image';
 import { useAuth } from '@/providers/auth-provider';
 import { api } from '@/lib/api';
 import Link from 'next/link';
@@ -436,10 +437,11 @@ export default function VideoUpload() {
                     Thumbnail Preview
                   </h3>
                   <div className="relative aspect-video w-64 bg-gray-100 rounded-lg overflow-hidden">
-                    <img
+                    <Image
                       src={thumbnail}
                       alt="Video thumbnail"
-                      className="w-full h-full object-cover"
+                      layout="fill"
+                      objectFit="cover"
                     />
                   </div>
                 </div>

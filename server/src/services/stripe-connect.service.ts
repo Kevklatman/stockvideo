@@ -11,52 +11,62 @@ export class StripeConnectService {
 
   private static userRepository = AppDataSource.getRepository(User);
 
-  static async createConnectAccount(userId: string, email: string) {
-    try {
-      // First check if user already has an account
-      const user = await this.userRepository.findOne({
-        where: { id: userId }
-      });
+// src/services/stripe-connect.service.ts
 
-      if (user?.stripeConnectAccountId) {
-        throw new PaymentError('User already has a Connect account');
-      }
+static async createConnectAccount(userId: string, email: string) {
+  try {
+    // Verify Stripe configuration
+    if (!process.env.STRIPE_SECRET_KEY) {
+      throw new PaymentError('Stripe secret key not configured');
+    }
 
-      // Create Stripe Connect Express account
-      const account = await this.stripe.accounts.create({
-        type: 'express',
-        country: 'US', // You might want to make this configurable
-        email: email,
-        capabilities: {
-          card_payments: { requested: true },
-          transfers: { requested: true }
-        },
-        metadata: {
-          userId: userId
-        },
-        settings: {
-          payouts: {
-            schedule: {
-              interval: 'manual' // Or 'daily', 'weekly', etc.
-            }
+    // First check if user already has an account
+    const user = await this.userRepository.findOne({
+      where: { id: userId }
+    });
+
+    if (user?.stripeConnectAccountId) {
+      throw new PaymentError('User already has a Connect account');
+    }
+
+    // Create Stripe Connect Express account
+    const account = await this.stripe.accounts.create({
+      type: 'express',
+      country: 'US', // Make this configurable if needed
+      email: email,
+      capabilities: {
+        card_payments: { requested: true },
+        transfers: { requested: true }
+      },
+      metadata: {
+        userId: userId
+      },
+      settings: {
+        payouts: {
+          schedule: {
+            interval: 'manual'
           }
         }
-      });
+      }
+    });
 
-      // Update user record with Connect account ID
-      await this.userRepository.update(userId, {
-        stripeConnectAccountId: account.id,
-        stripeConnectAccountStatus: 'pending'
-      });
+    // Update user record with Connect account ID
+    await this.userRepository.update(userId, {
+      stripeConnectAccountId: account.id,
+      stripeConnectAccountStatus: 'pending'
+    });
 
-      return account;
-    } catch (error) {
-      console.error('Error creating Connect account:', error);
-      throw new PaymentError(
-        error instanceof Error ? error.message : 'Failed to create Connect account'
-      );
+    return account;
+  } catch (error) {
+    console.error('Error creating Connect account:', error);
+    if (error instanceof Stripe.errors.StripeError) {
+      throw new PaymentError(error.message);
     }
+    throw new PaymentError(
+      error instanceof Error ? error.message : 'Failed to create Connect account'
+    );
   }
+}
 
   static async createAccountLink(
     accountId: string,
@@ -94,7 +104,7 @@ export class StripeConnectService {
       );
     }
   }
-
+// src/services/stripe-connect.service.ts
   static async createLoginLink(accountId: string) {
     try {
       return await this.stripe.accounts.createLoginLink(accountId);
