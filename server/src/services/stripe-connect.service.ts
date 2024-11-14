@@ -104,6 +104,22 @@ static async createConnectAccount(userId: string, email: string) {
       );
     }
   }
+  static async refreshAccountLink(accountId: string): Promise<string> {
+    try {
+      const accountLink = await this.stripe.accountLinks.create({
+        account: accountId,
+        refresh_url: `${process.env.FRONTEND_URL}/seller/onboarding/refresh`,
+        return_url: `${process.env.FRONTEND_URL}/seller/onboarding/complete`,
+        type: 'account_onboarding',
+      });
+
+      return accountLink.url;
+    } catch (error) {
+      console.error('Error creating account link:', error);
+      throw new PaymentError(
+        error instanceof Error ? error.message : 'Failed to create account link'
+      );
+    }}
 // src/services/stripe-connect.service.ts
   static async createLoginLink(accountId: string) {
     try {
