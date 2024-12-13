@@ -10,8 +10,13 @@ const database_1 = require("../config/database");
 const user_model_1 = require("../models/user.model");
 const errors_1 = require("../types/errors");
 class StripeConnectService {
+    // src/services/stripe-connect.service.ts
     static async createConnectAccount(userId, email) {
         try {
+            // Verify Stripe configuration
+            if (!process.env.STRIPE_SECRET_KEY) {
+                throw new errors_1.PaymentError('Stripe secret key not configured');
+            }
             // First check if user already has an account
             const user = await this.userRepository.findOne({
                 where: { id: userId }
@@ -22,7 +27,7 @@ class StripeConnectService {
             // Create Stripe Connect Express account
             const account = await this.stripe.accounts.create({
                 type: 'express',
-                country: 'US', // You might want to make this configurable
+                country: 'US', // Make this configurable if needed
                 email: email,
                 capabilities: {
                     card_payments: { requested: true },
@@ -34,7 +39,7 @@ class StripeConnectService {
                 settings: {
                     payouts: {
                         schedule: {
-                            interval: 'manual' // Or 'daily', 'weekly', etc.
+                            interval: 'manual'
                         }
                     }
                 }
@@ -48,6 +53,9 @@ class StripeConnectService {
         }
         catch (error) {
             console.error('Error creating Connect account:', error);
+            if (error instanceof stripe_1.default.errors.StripeError) {
+                throw new errors_1.PaymentError(error.message);
+            }
             throw new errors_1.PaymentError(error instanceof Error ? error.message : 'Failed to create Connect account');
         }
     }
@@ -80,6 +88,22 @@ class StripeConnectService {
             throw new errors_1.PaymentError(error instanceof Error ? error.message : 'Failed to get account status');
         }
     }
+    static async refreshAccountLink(accountId) {
+        try {
+            const accountLink = await this.stripe.accountLinks.create({
+                account: accountId,
+                refresh_url: `${process.env.FRONTEND_URL}/seller/onboarding/refresh`,
+                return_url: `${process.env.FRONTEND_URL}/seller/onboarding/complete`,
+                type: 'account_onboarding',
+            });
+            return accountLink.url;
+        }
+        catch (error) {
+            console.error('Error creating account link:', error);
+            throw new errors_1.PaymentError(error instanceof Error ? error.message : 'Failed to create account link');
+        }
+    }
+    // src/services/stripe-connect.service.ts
     static async createLoginLink(accountId) {
         try {
             return await this.stripe.accounts.createLoginLink(accountId);

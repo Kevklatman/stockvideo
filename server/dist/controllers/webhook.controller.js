@@ -7,6 +7,7 @@ exports.WebhookController = void 0;
 const stripe_1 = __importDefault(require("stripe"));
 const database_1 = require("../config/database");
 const purchase_model_1 = require("../models/purchase.model");
+const user_model_1 = require("../models/user.model");
 const logger_1 = require("../utils/logger");
 class WebhookController {
     static getLogger(context) {
@@ -28,52 +29,117 @@ class WebhookController {
             apiVersion: '2023-10-16'
         });
         const sig = req.headers['stripe-signature'];
-        try {
-            logger.info('Received webhook', {
-                signature: !!sig,
-                contentType: req.headers['content-type']
+        if (!sig) {
+            logger.error('No Stripe signature found');
+            return res.status(400).json({
+                status: 'error',
+                message: 'No signature provided'
             });
-            if (!sig) {
-                logger.error('Missing Stripe signature');
-                return res.status(400).json({
-                    status: 'error',
-                    message: 'Missing signature'
+        }
+        let event;
+        try {
+            event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+            try {
+                // Handle different event types
+                switch (event.type) {
+                    case 'payment_intent.succeeded':
+                        await WebhookController.handlePaymentIntentSucceeded(event.data.object);
+                        break;
+                    case 'payment_intent.payment_failed':
+                        await WebhookController.handlePaymentIntentFailed(event.data.object);
+                        break;
+                    case 'payment_intent.processing':
+                        await WebhookController.handlePaymentIntentProcessing(event.data.object);
+                        break;
+                    case 'account.updated':
+                        await WebhookController.handleAccountUpdated(event.data.object);
+                        break;
+                    case 'account.application.deauthorized':
+                        await WebhookController.handleAccountDeauthorized(event.data.object);
+                        break;
+                    default:
+                        logger.info('Unhandled event type', { type: event.type });
+                        break;
+                }
+                // Send success response
+                res.json({ received: true });
+            }
+            catch (processingError) {
+                logger.error('Error processing webhook event', {
+                    error: processingError instanceof Error ? processingError.message : 'Unknown error',
+                    stack: processingError instanceof Error ? processingError.stack : undefined,
+                    eventType: event.type
+                });
+                // Still return 200 to acknowledge receipt
+                res.status(200).json({
+                    received: true,
+                    warning: 'Event received but processing failed'
                 });
             }
-            // Verify webhook signature
-            const event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
-            logger.info('Webhook event received', {
-                type: event.type,
-                id: event.id
-            });
-            switch (event.type) {
-                case 'payment_intent.succeeded':
-                    await WebhookController.handlePaymentIntentSucceeded(event.data.object);
-                    break;
-                case 'payment_intent.payment_failed':
-                    await WebhookController.handlePaymentIntentFailed(event.data.object);
-                    break;
-                case 'payment_intent.processing':
-                    await WebhookController.handlePaymentIntentProcessing(event.data.object);
-                    break;
-                default:
-                    logger.info('Unhandled event type', { type: event.type });
-            }
-            res.json({ received: true });
         }
-        catch (err) {
-            logger.error('Webhook processing error', {
-                error: err instanceof Error ? err.message : 'Unknown error',
-                stack: err instanceof Error ? err.stack : undefined
+        catch (signatureError) {
+            logger.error('Webhook signature verification failed', {
+                error: signatureError instanceof Error ? signatureError.message : 'Unknown error',
+                stack: signatureError instanceof Error ? signatureError.stack : undefined
             });
-            // Still return 200 to acknowledge receipt
-            return res.status(200).json({
-                received: true,
-                warning: 'Event received but processing failed'
+            return res.status(400).json({
+                status: 'error',
+                message: 'Invalid signature'
             });
         }
     }
-    // In webhook.controller.ts, update handlePaymentIntentSucceeded
+    static async handleAccountUpdated(account) {
+        const logger = WebhookController.getLogger({
+            handler: 'handleAccountUpdated',
+            accountId: account.id
+        });
+        try {
+            await database_1.AppDataSource.transaction(async (transactionalEntityManager) => {
+                const user = await transactionalEntityManager
+                    .createQueryBuilder(user_model_1.User, 'user')
+                    .where('user.stripeConnectAccountId = :accountId', {
+                    accountId: account.id
+                })
+                    .setLock('pessimistic_write')
+                    .getOne();
+                if (!user) {
+                    logger.warn('No user found for Connect account', {
+                        accountId: account.id
+                    });
+                    return;
+                }
+                let newStatus = 'pending';
+                if (account.requirements?.disabled_reason?.includes('rejected')) {
+                    newStatus = 'rejected';
+                }
+                else if (account.charges_enabled && account.payouts_enabled) {
+                    newStatus = 'active';
+                }
+                else if (account.requirements?.disabled_reason) {
+                    newStatus = 'rejected';
+                }
+                if (user.stripeConnectAccountStatus !== newStatus) {
+                    user.stripeConnectAccountId = user.stripeConnectAccountId || undefined;
+                    user.stripeConnectAccountStatus = newStatus;
+                    await transactionalEntityManager.save(user);
+                    logger.info('Updated user Connect account status', {
+                        userId: user.id,
+                        oldStatus: user.stripeConnectAccountStatus,
+                        newStatus: newStatus,
+                        requirements: account.requirements
+                    });
+                }
+            });
+        }
+        catch (error) {
+            logger.error('Failed to process account update', {
+                error: error instanceof Error ? error.message : 'Unknown error',
+                stack: error instanceof Error ? error.stack : undefined,
+                accountId: account.id
+            });
+            throw error;
+        }
+    }
     static async handlePaymentIntentSucceeded(paymentIntent) {
         const logger = WebhookController.getLogger({
             handler: 'handlePaymentIntentSucceeded',
@@ -178,7 +244,6 @@ class WebhookController {
                     });
                     return;
                 }
-                // Ensure status is 'pending' while processing
                 if (purchase.status !== 'pending') {
                     purchase.status = 'pending';
                     purchase.updatedAt = new Date();
@@ -191,6 +256,44 @@ class WebhookController {
             logger.error('Failed to process processing payment', {
                 error: error instanceof Error ? error.message : 'Unknown error',
                 stack: error instanceof Error ? error.stack : undefined
+            });
+            throw error;
+        }
+    }
+    static async handleAccountDeauthorized(deauthorizedEvent) {
+        const logger = WebhookController.getLogger({
+            handler: 'handleAccountDeauthorized',
+            stripeUserId: deauthorizedEvent.stripe_user_id
+        });
+        try {
+            await database_1.AppDataSource.transaction(async (transactionalEntityManager) => {
+                const user = await transactionalEntityManager
+                    .createQueryBuilder(user_model_1.User, 'user')
+                    .where('user.stripeConnectAccountId = :accountId', {
+                    accountId: deauthorizedEvent.stripe_user_id
+                })
+                    .setLock('pessimistic_write')
+                    .getOne();
+                if (!user) {
+                    logger.warn('No user found for deauthorized Connect account', {
+                        stripeUserId: deauthorizedEvent.stripe_user_id
+                    });
+                    return;
+                }
+                user.stripeConnectAccountId = undefined;
+                user.stripeConnectAccountStatus = 'none';
+                await transactionalEntityManager.save(user);
+                logger.info('Reset user Connect account after deauthorization', {
+                    userId: user.id,
+                    stripeUserId: deauthorizedEvent.stripe_user_id
+                });
+            });
+        }
+        catch (error) {
+            logger.error('Failed to process account deauthorization', {
+                error: error instanceof Error ? error.message : 'Unknown error',
+                stack: error instanceof Error ? error.stack : undefined,
+                stripeUserId: deauthorizedEvent.stripe_user_id
             });
             throw error;
         }
