@@ -8,7 +8,7 @@ import { fromEnv } from '@aws-sdk/credential-providers';
 dotenv.config();
 
 // Constants
-const BUCKET_NAME = process.env.BUCKET_NAME!;
+const BUCKET_NAME = process.env.AWS_BUCKET_NAME!;
 const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/x-msvideo'];
 const UPLOAD_URL_EXPIRATION = 3600; // 1 hour in seconds
 

@@ -201,20 +201,33 @@ export default function VideoUpload() {
         throw new Error('Your seller account must be active to upload videos');
       }
 
+      console.log('Starting S3 upload with:', {
+        fileType: file.type,
+        fileSize: file.size,
+        fileName: file.name,
+        uploadUrl: uploadUrl
+      });
+      
       const xhr = new XMLHttpRequest();
       
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable) {
           const progress = Math.round((event.loaded / event.total) * 100);
           setUploadProgress(progress);
+          console.log(`Upload progress: ${progress}%`);
         }
       };
   
       await new Promise((resolve, reject) => {
-        xhr.open('PUT', uploadUrl);
-        xhr.setRequestHeader('Content-Type', file.type);
-        
-        xhr.onload = async () => {
+        try {
+          console.log('Opening XHR connection to:', uploadUrl);
+          xhr.open('PUT', uploadUrl);
+          console.log('Setting Content-Type header:', file.type);
+          xhr.setRequestHeader('Content-Type', file.type);
+          
+          xhr.onload = async () => {
+            console.log('Upload completed with status:', xhr.status, xhr.statusText);
+            console.log('Response headers:', xhr.getAllResponseHeaders());
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
               const token = localStorage.getItem('auth_token');
@@ -250,13 +263,31 @@ export default function VideoUpload() {
           }
         };
         
-        xhr.onerror = () => {
-          console.error('XHR Error:', xhr.statusText);
-          reject(new Error('Upload failed'));
+        xhr.onerror = (event) => {
+          console.error('XHR Error event:', event);
+          console.error('XHR Status:', xhr.status, xhr.statusText);
+          console.error('XHR Response:', xhr.response);
+          console.error('XHR Response Headers:', xhr.getAllResponseHeaders());
+          reject(new Error(`Upload failed: ${xhr.statusText || 'Network error'}`));
         };
-        xhr.onabort = () => reject(new Error('Upload aborted'));
         
-        xhr.send(file);
+        xhr.onabort = () => {
+          console.error('Upload aborted');
+          reject(new Error('Upload aborted'));
+        };
+        
+        console.log('Sending file to S3...');
+        try {
+          xhr.send(file);
+          console.log('File sent successfully');
+        } catch (error) {
+          console.error('Error sending file:', error);
+          reject(error);
+        }
+        } catch (error) {
+          console.error('Error setting up XHR request:', error);
+          reject(error);
+        }
       });
   
       setUploadProgress(100);
