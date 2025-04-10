@@ -128,6 +128,14 @@ npm run typeorm migration:run
 ## Deployment
 
 The application can be deployed to any hosting service that supports Node.js applications.
+## TODO/Known Issues
+
+When uploading a video you are asked to capture a thumbnail. As of now that thumbnail is not used in the uploaded video because it's not actually stored anywhere. 
+
+It needs some cloud provider setup similar to how the videos are provided using S3. 
+
+Probably will never get around to setting up the backend functionality for that, but I'm keeping the thumbnail capturer because I think it's cool.
+
 
 ## License
 
