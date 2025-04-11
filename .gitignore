@@ -10,4 +10,7 @@ server/.env
 # macOS system files
 .DS_Store
 
+# Database configuration
+.dbeaver/
+
 cors-config.json
