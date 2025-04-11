@@ -13,4 +13,9 @@ server/.env
 # Database configuration
 .dbeaver/
 
+# Log files
+server/logs/
+*.log
+*-audit.json
+
 cors-config.json
