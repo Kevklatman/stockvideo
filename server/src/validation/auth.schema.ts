@@ -1,7 +1,9 @@
 // src/validation/auth.schema.ts
 import Joi from 'joi';
 
+// DRY VIOLATION NOTE: Multiple validation duplications in this file
 export const registerSchema = Joi.object({
+  // DRY VIOLATION: Email validation logic 2/2. Other location: auth.service.ts line 45-48
   email: Joi.string()
     .email()
     .required()
@@ -13,6 +15,7 @@ export const registerSchema = Joi.object({
       'any.required': 'Email is required'
     }),
 
+  // DRY VIOLATION: Password validation logic 3/3. Other locations: auth.service.ts line 33-42, user.model.ts line 52-60
   password: Joi.string()
     .min(8)
     .max(100)
@@ -27,7 +30,9 @@ export const registerSchema = Joi.object({
     })
 }).options({ stripUnknown: true, abortEarly: false });
 
+// DRY VIOLATION NOTE: Email validation duplicated below
 export const loginSchema = Joi.object({
+  // DRY VIOLATION: Email validation logic 2/2. Other location: auth.service.ts line 45-48
   email: Joi.string()
     .email()
     .required()

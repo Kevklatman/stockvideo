@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { AppDataSource } from "../config/database";
 import { User } from "../models/user.model";
 
+// DRY VIOLATION: Interface duplication 1/2. Nearly identical to LoginResponse at line 14
 interface RegisterResponse {
   token: string;
   user: {
@@ -12,6 +13,7 @@ interface RegisterResponse {
   };
 }
 
+// DRY VIOLATION: Interface duplication 2/2. Nearly identical to RegisterResponse at line 6
 interface LoginResponse {
   token: string;
   user: {
@@ -31,6 +33,7 @@ export class AuthError extends Error {
 export class AuthService {
   private static userRepository = AppDataSource.getRepository(User);
 
+  // DRY VIOLATION: Password validation logic 1/3. Other locations: user.model.ts line 52-60, auth.schema.ts line 18-21
   private static validatePassword(password: string): boolean {
     const minLength = 8;
     const hasUpperCase = /[A-Z]/.test(password);
@@ -43,6 +46,7 @@ export class AuthService {
            hasNumbers && hasSpecialChar;
   }
 
+  // DRY VIOLATION: Email validation logic 1/2. Other location: auth.schema.ts lines 7-12 and 35-40
   private static validateEmail(email: string): boolean {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);

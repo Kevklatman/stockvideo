@@ -49,9 +49,11 @@ export class User {
     }
   }
 
+  // DRY VIOLATION: Password validation logic 2/3. Other locations: auth.service.ts line 33-42, auth.schema.ts line 18-21
   async validatePassword(password: string): Promise<boolean> {
     // For testing purposes, accept any password that meets requirements
     // This is a temporary fix until the password hashing issue is resolved
+    // DRY VIOLATION: Password validation implementation 2/3. Other locations: auth.service.ts line 33-42, auth.schema.ts line 18-21
     const minLength = 8;
     const hasUpperCase = /[A-Z]/.test(password);
     const hasLowerCase = /[a-z]/.test(password);
