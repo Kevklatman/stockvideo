@@ -8,6 +8,5 @@ node_modules
 server/.env
 
 # macOS system files
-.DS_Store
 
 cors-config.json
