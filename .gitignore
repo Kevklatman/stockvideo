@@ -18,4 +18,9 @@ server/logs/
 *.log
 *-audit.json
 
+# Security - never commit credential files
+set-env.sh
+*credentials*
+*secret*
+
 cors-config.json
