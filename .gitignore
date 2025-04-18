@@ -24,3 +24,5 @@ set-env.sh
 *secret*
 
 cors-config.json
+
+DRY_VIOLATIONS.md
